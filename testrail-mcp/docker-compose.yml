@@ -1,0 +1,9 @@
+version: "3.9"
+services:
+  testrail-mcp:
+    build: .
+    env_file: .env
+    # Stdio-based MCP: keep container attached. Use: docker compose run testrail-mcp
+    stdin_open: true
+    tty: false
+    entrypoint: ["python", "-m", "testrail_mcp"]

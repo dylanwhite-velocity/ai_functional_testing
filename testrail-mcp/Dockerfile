@@ -11,7 +11,6 @@ WORKDIR /app
 
 COPY pyproject.toml README.md /app/
 COPY testrail_mcp /app/testrail_mcp
-COPY smithery.yaml LICENSE /app/
 
 # Install only runtime dependencies (editable not needed inside container)
 RUN pip install --no-cache-dir --upgrade pip \

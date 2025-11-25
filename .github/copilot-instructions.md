@@ -13,20 +13,16 @@
 #### 1. Default Project Context
 All TestRail MCP operations should target the ArcGIS Velocity project (ID: 63) unless explicitly specified otherwise. When using TestRail MCP tools, always use project_id: 63.
 
-#### 2. Platform Distribution Awareness
-ArcGIS Velocity is deployed across multiple platforms. Always identify and distinguish which platform distribution test results, test cases, or test runs are associated with:
-
-- **AWS (Neo Reloaded)** - Amazon Web Services deployment
-- **Azure (Trinity)** - Microsoft Azure deployment  
-- **Enterprise** - On-premises ArcGIS Enterprise deployment
+#### 2. Platform-Agnostic Testing
+All test cases in TestRail are designed to be platform-agnostic and should work on any distribution (AWS, Azure, or Enterprise). Tests are designed to validate functionality regardless of the deployment platform.
 
 When querying, creating, or reporting TestRail data:
-- Always specify the platform (AWS/Azure/Enterprise) in test run names, descriptions, and filters
-- Use platform-specific tags or labels when available
-- Clearly indicate the platform context in any summaries or reports
+- Test cases apply to all platforms unless explicitly stated otherwise
+- Focus on functionality being tested rather than platform specifics
+- Test runs may target specific environments but test cases remain universal
 
 #### 3. Environment Specification
-Within each platform, distinguish between environments:
+Distinguish between test environments when creating test runs:
 - **DEV** - Development environment
 - **QA** - Quality Assurance environment
 - **Production** - Production environment (if applicable)
@@ -42,41 +38,41 @@ Recognize and categorize different test types:
 
 #### 5. Naming Conventions
 When creating or filtering test runs, cases, or results:
-- Include platform identifier: `[AWS]`, `[Azure]`, or `[Enterprise]`
 - Include environment: `DEV`, `QA`, `Production`
 - Include test type when applicable
-- Example: `[Azure] QA - Selenium E2E - Sprint 24.3`
+- Include version or sprint information when relevant
+- Example: `QA - Selenium E2E - Sprint 24.3` or `DEV - Heimdall Regression - v1.2.0`
 
 #### 6. Reporting Standards
 When generating reports or summaries:
-- Group results by platform first, then by test type
-- Clearly separate AWS, Azure, and Enterprise results
+- Group results by test type and environment
 - Include environment context in all summaries
-- Highlight platform-specific failures or issues
+- Highlight failures or issues with clear descriptions
+- Focus on functionality tested rather than platform specifics
 
 ## TestRail MCP Usage Examples
 
 ### Example 1: Getting Test Runs
 ```python
 # Always filter for Velocity project (ID: 63)
-# and specify platform in the query
-get_runs(project_id=63)  # Then filter by platform in results
+get_runs(project_id=63)
 ```
 
 ### Example 2: Creating Test Runs
 ```python
-# Include platform and environment in name
+# Include environment and test type in name
 add_run(
     project_id=63,
-    name="[Azure] QA - Heimdall Regression - v1.2.0",
-    description="Automated regression tests for Azure QA environment"
+    name="QA - Heimdall Regression - v1.2.0",
+    description="Automated regression tests for QA environment"
 )
 ```
 
 ### Example 3: Querying Test Cases
 ```python
-# When searching test cases, consider platform-specific cases
-# Use sections or custom fields to filter by platform
+# Test cases are platform-agnostic and work across all distributions
+# Filter by suite, section, or test type as needed
+get_cases(project_id=63, suite_id=7253)
 ```
 
 ## Additional Resources
@@ -95,17 +91,12 @@ add_run(
 
 ## Default Behavior
 
-When no platform is specified in a prompt:
-1. Ask for clarification about which platform (AWS/Azure/Enterprise)
-2. If context suggests a specific platform, state the assumption clearly
-3. When listing results from all platforms, clearly separate and label each section
+When environment is not specified in a prompt:
+1. Ask for clarification about which environment (DEV/QA/Production)
+2. If context suggests a specific environment, state the assumption clearly
+3. Default to QA environment for test execution if not specified
 
 ## Keywords to Watch For
-
-Platform indicators in prompts:
-- AWS, Neo, "Neo Reloaded" → AWS platform
-- Azure, Trinity → Azure platform
-- Enterprise, On-prem, On-premises → Enterprise platform
 
 Environment indicators:
 - Dev, Development → DEV environment

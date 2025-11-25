@@ -79,12 +79,48 @@ class TestRailClient:
         """Get a test case by ID."""
         return self._send_request('GET', f'get_case/{case_id}')
     
-    def get_cases(self, project_id: int, suite_id: Optional[int] = None) -> List[Dict]:
-        """Get all test cases for a project/suite."""
-        uri = f'get_cases/{project_id}'
-        if suite_id:
-            uri += f'&suite_id={suite_id}'
-        return self._send_request('GET', uri)
+    def get_cases(self, project_id: int, suite_id: Optional[int] = None, section_id: Optional[int] = None) -> List[Dict]:
+        """
+        Get all test cases for a project/suite with automatic pagination.
+        
+        Args:
+            project_id: The ID of the project
+            suite_id: The ID of the test suite (optional)
+            section_id: The ID of the section/group to filter by (optional)
+            
+        Returns:
+            List of all test cases matching the criteria
+        """
+        all_cases = []
+        offset = 0
+        limit = 250  # TestRail's default/max limit
+        
+        while True:
+            uri = f'get_cases/{project_id}&limit={limit}&offset={offset}'
+            if suite_id:
+                uri += f'&suite_id={suite_id}'
+            if section_id:
+                uri += f'&section_id={section_id}'
+            
+            response = self._send_request('GET', uri)
+            
+            # Handle both paginated and non-paginated responses
+            if isinstance(response, dict) and 'cases' in response:
+                cases = response['cases']
+                all_cases.extend(cases)
+                
+                # Check if there are more pages
+                next_link = response.get('_links', {}).get('next')
+                if not next_link or len(cases) < limit:
+                    break
+                    
+                offset += limit
+            else:
+                # Old API response format (just a list)
+                all_cases = response
+                break
+        
+        return all_cases
     
     def add_case(self, section_id: int, data: Dict) -> Dict:
         """Add a new test case."""
@@ -125,8 +161,40 @@ class TestRailClient:
         return self._send_request('GET', f'get_run/{run_id}')
     
     def get_runs(self, project_id: int) -> List[Dict]:
-        """Get all test runs for a project."""
-        return self._send_request('GET', f'get_runs/{project_id}')
+        """
+        Get all test runs for a project with automatic pagination.
+        
+        Args:
+            project_id: The ID of the project
+            
+        Returns:
+            List of all test runs
+        """
+        all_runs = []
+        offset = 0
+        limit = 250  # TestRail's default/max limit
+        
+        while True:
+            uri = f'get_runs/{project_id}&limit={limit}&offset={offset}'
+            response = self._send_request('GET', uri)
+            
+            # Handle both paginated and non-paginated responses
+            if isinstance(response, dict) and 'runs' in response:
+                runs = response['runs']
+                all_runs.extend(runs)
+                
+                # Check if there are more pages
+                next_link = response.get('_links', {}).get('next')
+                if not next_link or len(runs) < limit:
+                    break
+                    
+                offset += limit
+            else:
+                # Old API response format (just a list)
+                all_runs = response
+                break
+        
+        return all_runs
     
     def add_run(self, project_id: int, data: Dict) -> Dict:
         """Add a new test run."""
@@ -146,12 +214,76 @@ class TestRailClient:
     
     # Results API
     def get_results(self, test_id: int) -> List[Dict]:
-        """Get all results for a test."""
-        return self._send_request('GET', f'get_results/{test_id}')
+        """
+        Get all results for a test with automatic pagination.
+        
+        Args:
+            test_id: The ID of the test
+            
+        Returns:
+            List of all test results
+        """
+        all_results = []
+        offset = 0
+        limit = 250  # TestRail's default/max limit
+        
+        while True:
+            uri = f'get_results/{test_id}&limit={limit}&offset={offset}'
+            response = self._send_request('GET', uri)
+            
+            # Handle both paginated and non-paginated responses
+            if isinstance(response, dict) and 'results' in response:
+                results = response['results']
+                all_results.extend(results)
+                
+                # Check if there are more pages
+                next_link = response.get('_links', {}).get('next')
+                if not next_link or len(results) < limit:
+                    break
+                    
+                offset += limit
+            else:
+                # Old API response format (just a list)
+                all_results = response
+                break
+        
+        return all_results
     
     def get_results_for_run(self, run_id: int) -> List[Dict]:
-        """Get all results for a run."""
-        return self._send_request('GET', f'get_results_for_run/{run_id}')
+        """
+        Get all results for a run with automatic pagination.
+        
+        Args:
+            run_id: The ID of the run
+            
+        Returns:
+            List of all test results for the run
+        """
+        all_results = []
+        offset = 0
+        limit = 250  # TestRail's default/max limit
+        
+        while True:
+            uri = f'get_results_for_run/{run_id}&limit={limit}&offset={offset}'
+            response = self._send_request('GET', uri)
+            
+            # Handle both paginated and non-paginated responses
+            if isinstance(response, dict) and 'results' in response:
+                results = response['results']
+                all_results.extend(results)
+                
+                # Check if there are more pages
+                next_link = response.get('_links', {}).get('next')
+                if not next_link or len(results) < limit:
+                    break
+                    
+                offset += limit
+            else:
+                # Old API response format (just a list)
+                all_results = response
+                break
+        
+        return all_results
     
     def add_result(self, test_id: int, data: Dict) -> Dict:
         """Add a new result for a test."""

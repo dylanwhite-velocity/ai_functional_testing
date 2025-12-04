@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  arcgis-velocity-mcp:
+    build: .
+    container_name: arcgis-velocity-mcp
+    environment:
+      - VELOCITY_BASE_URL=${VELOCITY_BASE_URL}
+      - VELOCITY_USERNAME=${VELOCITY_USERNAME}
+      - VELOCITY_PASSWORD=${VELOCITY_PASSWORD}
+      - VELOCITY_PORTAL_URL=${VELOCITY_PORTAL_URL}
+    ports:
+      - "3000:3000"
+    stdin_open: true
+    tty: true

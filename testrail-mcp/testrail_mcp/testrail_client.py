@@ -134,6 +134,15 @@ class TestRailClient:
         """Delete a test case."""
         return self._send_request('POST', f'delete_case/{case_id}')
     
+    # Suites API
+    def get_suites(self, project_id: int) -> List[Dict]:
+        """Get all test suites for a project."""
+        return self._send_request('GET', f'get_suites/{project_id}')
+    
+    def get_suite(self, suite_id: int) -> Dict:
+        """Get a test suite by ID."""
+        return self._send_request('GET', f'get_suite/{suite_id}')
+    
     # Projects API
     def get_project(self, project_id: int) -> Dict:
         """Get a project by ID."""

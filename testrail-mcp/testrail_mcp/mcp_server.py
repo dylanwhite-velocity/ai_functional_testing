@@ -247,6 +247,28 @@ class TestRailMCPServer(FastMCP):
                 case_id: The ID of the test case
             """
             return self.client.delete_case(case_id)
+        
+        # Suite tools
+        @self.tool("get_suites", description="Get all test suites for a project")
+        def get_suites(project_id: int) -> List[Dict]:
+            """
+            Get all test suites for a project.
+            
+            Args:
+                project_id: The ID of the project
+            """
+            return self.client.get_suites(project_id)
+        
+        @self.tool("get_suite", description="Get a test suite by ID")
+        def get_suite(suite_id: int) -> Dict:
+            """
+            Get a test suite by ID.
+            
+            Args:
+                suite_id: The ID of the suite
+            """
+            return self.client.get_suite(suite_id)
+        
         # Section tools
         @self.tool("get_section", description="Retrieves details of a specific section by ID")
         def get_section(section_id: int) -> Dict:

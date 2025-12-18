@@ -1,0 +1,261 @@
+name: Test Case Fix Automation
+
+on:
+  issues:
+    types: [opened, edited]
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  automate-issue:
+    if: contains(github.event.issue.labels.*.name, 'QC–Automation (Maintenance)')
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Parse Issue Form
+        id: parse
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = context.payload.issue.body;
+            
+            // Extract test type from issue body (markdown format)
+            const testTypeMatch = body.match(/\*\*Test Type:\*\*\s*(.+)/);
+            const testType = testTypeMatch ? testTypeMatch[1].trim() : null;
+            
+            // Extract component from issue body (markdown format)
+            const componentMatch = body.match(/\*\*Component\/Feature:\*\*\s*(.+)/);
+            const component = componentMatch ? componentMatch[1].trim() : null;
+            
+            // Extract action required (look for checked checkbox)
+            const actionMatch = body.match(/- \[x\]\s*(.+)/i);
+            const action = actionMatch ? actionMatch[1].trim() : null;
+            
+            core.setOutput('test_type', testType);
+            core.setOutput('component', component);
+            core.setOutput('action', action);
+            
+            console.log(`Test Type: ${testType}`);
+            console.log(`Component: ${component}`);
+            console.log(`Action: ${action}`);
+
+      - name: Add Test Type Label
+        if: steps.parse.outputs.test_type != 'null'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const testType = '${{ steps.parse.outputs.test_type }}';
+            let label = '';
+            
+            if (testType.includes('ReadyAPI')) {
+              label = 'QC–ReadyAPI';
+            } else if (testType.includes('Selenium')) {
+              label = 'QC–Selenium';
+            } else if (testType.includes('Heimdall')) {
+              label = 'QC–Heimdall';
+            }
+            
+            if (label) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                labels: [label]
+              });
+              console.log(`Added label: ${label}`);
+            }
+
+      - name: Add Component Label
+        if: steps.parse.outputs.component != 'null'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const component = '${{ steps.parse.outputs.component }}';
+            const componentLabels = {
+              'Feed': 'component:feed',
+              'Output': 'component:output',
+              'Tools': 'component:tools',
+              'Layers': 'component:layers',
+              'Real-time Analytics': 'component:analytics',
+              'Big Data Analytics': 'component:bigdata',
+              'Sources': 'component:sources'
+            };
+            
+            const label = componentLabels[component];
+            if (label) {
+              try {
+                await github.rest.issues.addLabels({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: context.issue.number,
+                  labels: [label]
+                });
+                console.log(`Added label: ${label}`);
+              } catch (error) {
+                console.log(`Label ${label} may not exist, skipping`);
+              }
+            }
+
+      - name: Add Bug Label if Product Issue
+        if: contains(steps.parse.outputs.action, 'Product bug')
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              labels: ['QC–Bugs']
+            });
+            console.log('Added QC–Bugs label');
+
+      - name: Add Watchers
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            // Define watchers - replace with actual GitHub usernames
+            const watchers = [
+              'yini-username',    // Replace with actual GitHub username
+              'eric-username',    // Replace with actual GitHub username
+              'manish-username'   // Replace with actual GitHub username
+            ];
+            
+            const issueAuthor = context.payload.issue.user.login;
+            
+            for (const watcher of watchers) {
+              // Don't add author as watcher
+              if (watcher === issueAuthor) continue;
+              
+              try {
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: context.issue.number,
+                  body: `@${watcher}`
+                });
+                console.log(`Added watcher: ${watcher}`);
+              } catch (error) {
+                console.log(`Could not add watcher ${watcher}: ${error.message}`);
+              }
+            }
+            
+            // Delete the watcher comment after a short delay
+            // This ensures they get notified but keeps the issue clean
+            setTimeout(async () => {
+              const comments = await github.rest.issues.listComments({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number
+              });
+              
+              const botComments = comments.data.filter(
+                comment => comment.user.login === 'github-actions[bot]' && 
+                           comment.body.startsWith('@')
+              );
+              
+              for (const comment of botComments) {
+                await github.rest.issues.deleteComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  comment_id: comment.id
+                });
+              }
+            }, 2000);
+
+      - name: Add to Project Board
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            // Add to PS Regression Project Board
+            // Replace PROJECT_NUMBER with your actual project number
+            const projectNumber = 1; // Update this
+            
+            try {
+              // Get project ID
+              const projects = await github.rest.projects.listForRepo({
+                owner: context.repo.owner,
+                repo: context.repo.repo
+              });
+              
+              const project = projects.data.find(p => p.number === projectNumber);
+              
+              if (project) {
+                // Get columns
+                const columns = await github.rest.projects.listColumns({
+                  project_id: project.id
+                });
+                
+                // Add to "Backlog" or "New Development" column
+                const targetColumn = columns.data.find(
+                  col => col.name === 'Backlog' || col.name === 'New Development'
+                );
+                
+                if (targetColumn) {
+                  await github.rest.projects.createCard({
+                    column_id: targetColumn.id,
+                    content_id: context.payload.issue.id,
+                    content_type: 'Issue'
+                  });
+                  console.log(`Added issue to project column: ${targetColumn.name}`);
+                }
+              }
+            } catch (error) {
+              console.log(`Could not add to project: ${error.message}`);
+            }
+
+      - name: Add Automation Team Comment
+        if: contains(steps.parse.outputs.action, 'Update automation')
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const comment = `## 🤖 Automation Team Action Required
+
+**Request:** Please update test steps in both **DEV** and **QA** environments based on the TestRail changes documented above.
+
+**TestRail Case:** See "TestRail Case Link" field above
+**Priority:** QC-Priority 1
+
+Please comment when updates are complete in both environments.`;
+            
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: comment
+            });
+
+      - name: Add Skip Test Comment
+        if: contains(steps.parse.outputs.action, 'Skip test')
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const comment = `## ⏭️ Test Case Skip Notification
+
+This test case should be skipped temporarily. TestRail has been updated accordingly.
+
+**Action Taken:**
+- Test case marked as **Inactive** in TestRail
+- This issue will track reactivation once resources/fixes are available
+
+Please confirm skip implementation in test automation.`;
+            
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: comment
+            });
+
+      - name: Summary
+        uses: actions/github-script@v7
+        with:
+          script: |
+            console.log('✅ Automation complete');
+            console.log(`- Issue: #${context.issue.number}`);
+            console.log(`- Test Type: ${{ steps.parse.outputs.test_type }}`);
+            console.log(`- Component: ${{ steps.parse.outputs.component }}`);
+            console.log(`- Action: ${{ steps.parse.outputs.action }}`);

@@ -33,8 +33,6 @@ def create_velocity_client() -> VelocityClient:
     )
 
 
-# ========== Feed Management Tools ==========
-
 @server.list_tools()
 async def list_tools() -> list[Tool]:
     """List all available tools"""
@@ -348,6 +346,52 @@ async def list_tools() -> list[Tool]:
             }
         ),
         Tool(
+            name="create_bigdata_analytic",
+            description="Create a new big data analytic",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "analytic_data": {
+                        "type": "object",
+                        "description": "The analytic configuration object"
+                    }
+                },
+                "required": ["analytic_data"]
+            }
+        ),
+        Tool(
+            name="update_bigdata_analytic",
+            description="Update an existing big data analytic",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "analytic_id": {
+                        "type": "string",
+                        "description": "The ID of the analytic to update"
+                    },
+                    "analytic_data": {
+                        "type": "object",
+                        "description": "The updated analytic configuration"
+                    }
+                },
+                "required": ["analytic_id", "analytic_data"]
+            }
+        ),
+        Tool(
+            name="delete_bigdata_analytic",
+            description="Delete a big data analytic",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "analytic_id": {
+                        "type": "string",
+                        "description": "The ID of the analytic to delete"
+                    }
+                },
+                "required": ["analytic_id"]
+            }
+        ),
+        Tool(
             name="start_bigdata_analytic",
             description="Start a big data analytic",
             inputSchema={
@@ -384,6 +428,82 @@ async def list_tools() -> list[Tool]:
                     "analytic_id": {
                         "type": "string",
                         "description": "The ID of the analytic"
+                    }
+                },
+                "required": ["analytic_id"]
+            }
+        ),
+        Tool(
+            name="clone_bigdata_analytic",
+            description="Clone an existing big data analytic",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "analytic_id": {
+                        "type": "string",
+                        "description": "The ID of the analytic to clone"
+                    },
+                    "name": {
+                        "type": "string",
+                        "description": "Name for the cloned analytic"
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": "Description for the cloned analytic"
+                    }
+                },
+                "required": ["analytic_id", "name"]
+            }
+        ),
+        Tool(
+            name="scale_bigdata_analytic",
+            description="Scale a running big data analytic",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "analytic_id": {
+                        "type": "string",
+                        "description": "The ID of the analytic to scale"
+                    },
+                    "cpu": {
+                        "type": "number",
+                        "description": "CPU allocation"
+                    },
+                    "memory": {
+                        "type": "number",
+                        "description": "Memory allocation in GB"
+                    },
+                    "instances": {
+                        "type": "integer",
+                        "description": "Number of instances"
+                    }
+                },
+                "required": ["analytic_id", "cpu", "memory", "instances"]
+            }
+        ),
+        Tool(
+            name="validate_bigdata_analytic",
+            description="Validate a big data analytic configuration",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "analytic_data": {
+                        "type": "object",
+                        "description": "The analytic configuration to validate"
+                    }
+                },
+                "required": ["analytic_data"]
+            }
+        ),
+        Tool(
+            name="validate_bigdata_analytic_by_id",
+            description="Validate a big data analytic by ID",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "analytic_id": {
+                        "type": "string",
+                        "description": "The ID of the analytic to validate"
                     }
                 },
                 "required": ["analytic_id"]
@@ -609,12 +729,38 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent]:
                 result = await client.get_bigdata_analytics()
             elif name == "get_bigdata_analytic":
                 result = await client.get_bigdata_analytic(arguments["analytic_id"])
+            elif name == "create_bigdata_analytic":
+                result = await client.create_bigdata_analytic(arguments["analytic_data"])
+            elif name == "update_bigdata_analytic":
+                result = await client.update_bigdata_analytic(
+                    arguments["analytic_id"],
+                    arguments["analytic_data"]
+                )
+            elif name == "delete_bigdata_analytic":
+                result = await client.delete_bigdata_analytic(arguments["analytic_id"])
             elif name == "start_bigdata_analytic":
                 result = await client.start_bigdata_analytic(arguments["analytic_id"])
             elif name == "stop_bigdata_analytic":
                 result = await client.stop_bigdata_analytic(arguments["analytic_id"])
             elif name == "get_bigdata_analytic_status":
                 result = await client.get_bigdata_analytic_status(arguments["analytic_id"])
+            elif name == "clone_bigdata_analytic":
+                result = await client.clone_bigdata_analytic(
+                    arguments["analytic_id"],
+                    arguments["name"],
+                    arguments.get("description")
+                )
+            elif name == "scale_bigdata_analytic":
+                result = await client.scale_bigdata_analytic(
+                    arguments["analytic_id"],
+                    arguments["cpu"],
+                    arguments["memory"],
+                    arguments["instances"]
+                )
+            elif name == "validate_bigdata_analytic":
+                result = await client.validate_bigdata_analytic(arguments["analytic_data"])
+            elif name == "validate_bigdata_analytic_by_id":
+                result = await client.validate_bigdata_analytic_by_id(arguments["analytic_id"])
             
             # Services
             elif name == "get_feature_services":

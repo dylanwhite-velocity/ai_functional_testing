@@ -1,14 +1,15 @@
-"""Entry point for the TestRail MCP server when run as a module."""
+"""
+Entry point for the TestRail MCP Server
+"""
+
 import sys
 import asyncio
+from .mcp_server import main
 
-from testrail_mcp.mcp_server import TestRailMCPServer
-
-def main():
+def run():
     """Run the TestRail MCP server."""
     print("Starting TestRail MCP server in stdio mode", file=sys.stderr)
-    server = TestRailMCPServer()
-    asyncio.run(server.run_stdio_async())
+    asyncio.run(main())
 
 if __name__ == "__main__":
-    main()
+    run()

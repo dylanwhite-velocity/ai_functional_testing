@@ -2,21 +2,23 @@
 
 A Model Context Protocol (MCP) server for TestRail integration, maintained by the Real-Time Team. This server enables AI assistants like GitHub Copilot, Claude, Cursor, and Windsurf to interact with TestRail for test management and automation.
 
-Source: https://github.com/sker65/testrail-mcp
+**Version:** 0.2.0
+
+Based on: https://github.com/sker65/testrail-mcp
 
 ## Features
 - Authentication with TestRail API
 - Access to TestRail entities:
-  - Projects
-  - Cases
-  - Runs
-  - Results
-  - Datasets
-- Full support for the Model Context Protocol
-
-## See it in action together with Octomind MCP
-
-[![Video Title](https://img.youtube.com/vi/I7lc9I0S62Y/0.jpg)](https://www.youtube.com/watch?v=I7lc9I0S62Y)
+  - **Projects** - Create, read, update, and delete projects
+  - **Test Cases** - Manage test cases with full CRUD operations
+  - **Test Suites** - View and organize test suites
+  - **Sections** - Create and manage test sections/folders
+  - **Test Runs** - Create, update, close, and delete test runs
+  - **Test Results** - Add and view test execution results
+  - **Datasets** - Manage data-driven testing datasets
+- Stdio-based communication for seamless integration
+- Automatic pagination for large result sets
+- Built with official MCP SDK for stability and compatibility
 
 ---
 
@@ -29,7 +31,7 @@ Docker Desktop installed ([Download](https://www.docker.com/products/docker-desk
 
 ```bash
 git clone https://devtopia.esri.com/dyl13740/functional-testing-admin
-cd ai_functional_testing
+cd ai_functional_testing/testrail-mcp
 ```
 
 ### Step 2: Configure TestRail Credentials
@@ -37,10 +39,9 @@ cd ai_functional_testing
 Create a `.env` file in the `testrail-mcp/` directory:
 
 ```bash
-cd testrail-mcp
 cat > .env << 'EOF'
-TESTRAIL_URL=https://your-instance.testrail.io
-TESTRAIL_USERNAME=your-email@example.com
+TESTRAIL_URL=https://esri.testrail.com
+TESTRAIL_USERNAME=your-email@esri.com
 TESTRAIL_API_KEY=your-api-key-here
 EOF
 ```
@@ -54,23 +55,23 @@ EOF
 ⚠️ **Important:** Never commit the `.env` file to version control (it's already in `.gitignore`)
 
 ### Step 3: Choose Your Installation Method
+Build the Docker Image
 
-#### Docker (Recommended)**
-
-Build and run the MCP server using Docker:
+Build and test the MCP server using Docker:
 
 ```bash
 # Build the Docker image
 docker compose build
 
-# Run the server (for testing)
+# Test the server (optional - for verification)
 docker compose run --rm testrail-mcp
 ```
 
 You should see: `Starting TestRail MCP server in stdio mode`
 
-Press `Ctrl+C` to stop the test run.
+The server will wait for MCP protocol messages. Press `Ctrl+C` to stop the test run.
 
+> **Note:** The server runs in stdio mode and communicates via standard input/output. It's not meant to run standalone - it integrates with MCP clients like VS Code
 
 ## Integrating with MCP Clients
 
@@ -119,27 +120,32 @@ The MCP Inspector provides a web UI to test your server:
 
 ```bash
 cd testrail-mcp
-
 # For Docker:
 npx @modelcontextprotocol/inspector docker compose run --rm testrail-mcp
-
-# For Python:
-source .venv/bin/activate
-npx @modelcontextprotocol/inspector python -m testrail_mcp
 ```
 
 This opens a browser interface where you can:
-- View available tools (projects, cases, runs, results)
+- View all 29 available tools (projects, cases, runs, results, sections, datasets)
 - Test API calls interactively
 - Verify your TestRail credentials
-
+- Explore the full API schema
 ### Test in VS Code
+ with GitHub Copilot
 
-1. Open any file in VS Code
-2. Open GitHub Copilot Chat
-3. Type: `@real-time/testrail-mcp list all projects`
-4. You should see your TestRail projects listed
+1. **Completely quit and restart VS Code** (⌘Q on Mac, not just reload window)
+2. Wait 10-15 seconds for MCP servers to initialize
+3. Open GitHub Copilot Chat
+4. Test the connection:
+   ```
+   List all TestRail projects
+   ```
+   
+You should see all projects from your TestRail instance, including ArcGIS Velocity (ID: 63).
 
+**Example queries to try:**
+- `Get test runs for ArcGIS Velocity project`
+- `Show me test cases in suite 7253`
+- `Get the status of test run 12345`
 ---
 
 ## Troubleshooting
@@ -152,29 +158,75 @@ This opens a browser interface where you can:
 
 ### "Authentication failed"
 
-- Verify your `.env` file has correct credentials
-- Check that `TESTRAIL_URL` uses HTTPS: `https://`
-- Regenerate your API key in TestRail if needed
+- Verify your `.env` file has correct or "Tools not available"
 
-### "Server not appearing in VS Code"
+**This is the most common issue.** The server may be running but not registered with VS Code yet.
+
+**Solution:**
+1. **Completely quit VS Code** (⌘Q on Mac, not reload window)
+2. Wait 10-15 seconds
+3. Restart VS Code
+4. Wait for MCP servers to initialize (10-15 seconds)
+5. Start a **new chat session**
+
+**Verify configuration:**
+- Check the **full absolute path** in `mcp.json`
+- Ensure path uses forward slashes: `/Users/...`
+- No typos in the JSON configuration
+
+## Available Tools
+
+The server provides **29 tools** for comprehensive TestRail integration:
+
+**Projects:** `get_project`, `get_projects`, `add_project`, `update_project`, `delete_project`
+
+**Test Cases:** `get_case`, `get_cases`, `add_case`, `update_case`, `delete_case`
+
+**Test Suites:** `get_suite`, `get_suites`
+
+**Sections:** `get_section`, `get_sections`, `add_section`, `update_section`, `delete_section`, `move_section`
+
+**Test Runs:** `get_run`, `get_runs`, `add_run`, `update_run`, `close_run`, `delete_run`
+
+**Test Results:** `get_results`, `add_result`
+
+**Datasets:** `get_dataset`, `get_datasets`, `add_dataset`, `update_dataset`, `delete_dataset`
+
+---
+
+## Development & Architecture
+
+This server is built using:
+
+- **[MCP SDK](https://github.com/modelcontextprotocol)** - Official Model Context Protocol SDK (v1.0.0+)
+- **[Requests](https://requests.readthedocs.io/)** - HTTP communication with TestRail API
+- **[python-dotenv](https://github.com/theskumar/python-dotenv)** - Environment variable management
+- **Python 3.10+** - Modern Python features and type hints
+
+
+---
+
+## Team Resources
+
+**Primary TestRail Project:** ArcGIS Velocity (ID: 63)
+- URL: https://esri.testrail.com/index.php?/projects/overview/63
+- Multiple test suite mode
+- Default role: Real-Time PE
+
+---
+
+## Support
+
+For issues or questions:
+1. Check troubleshooting section above
+2. Review server logs: `docker logs $(docker ps -q --filter "name=testrail-mcp")`
+3. Contact Real-Time Team
+4. File an issue in the repository
+**View server logs:**
+```bash
+docker logs $(docker ps -q --filter "name=testrail-mcp")
+```
 
 - Verify the **full absolute path** in your configuration
 - Restart your editor completely
 - Check for typos in the JSON configuration
-
-### Docker permission errors
-
-On Linux, you may need to run Docker commands with `sudo` or add your user to the `docker` group:
-```bash
-sudo usermod -aG docker $USER
-# Log out and back in for changes to take effect
-```
-
----
-## Development
-
-This server is built using:
-
-- [FastMCP](https://github.com/jlowin/fastmcp) - A Python framework for building MCP servers
-- [Requests](https://requests.readthedocs.io/) - For HTTP communication with TestRail API
-- [python-dotenv](https://github.com/theskumar/python-dotenv) - For environment variable management

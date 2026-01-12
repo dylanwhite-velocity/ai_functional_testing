@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "testrail-mcp"
-version = "0.1.5"
+version = "0.2.0"
 description = "TestRail MCP Server"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -12,12 +12,11 @@ license = {text = "MIT"}
 dependencies = [
     "requests>=2.31.0",
     "python-dotenv>=1.0.0",
-    "python-mcp>=1.0.0",
-    "fastmcp",
+    "mcp>=1.0.0",
 ]
 
 [project.scripts]
-testrail-mcp = "testrail_mcp.__main__:main"
+testrail-mcp = "testrail_mcp.__main__:run"
 
 [tool.hatch.build.targets.wheel]
 packages = ["testrail_mcp"]

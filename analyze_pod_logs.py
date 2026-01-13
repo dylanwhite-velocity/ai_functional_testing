@@ -14,9 +14,9 @@ from collections import defaultdict
 
 # Configuration
 KUBE_CONTEXT = "qa-advanced"  # Edit this to change the cluster context
-#NAMESPACE = "velocity-rzbirc1krb814pev-services"  # Soak DOG
-NAMESPACE = "velocity-nc7yvw8shwjniihe-services"  # Soak Cat
-HOURS_BACK = 2  # Number of hours to look back
+NAMESPACE = "velocity-rzbirc1krb814pev-services"  # Soak DOG
+#NAMESPACE = "velocity-nc7yvw8shwjniihe-services"  # Soak Cat
+HOURS_BACK = 6  # Number of hours to look back
 
 # Pod name patterns
 POD_PATTERNS = {

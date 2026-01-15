@@ -13,10 +13,15 @@ from collections import defaultdict
 
 
 # Configuration
-KUBE_CONTEXT = "qa-advanced"  # Edit this to change the cluster context
-NAMESPACE = "velocity-rzbirc1krb814pev-services"  # Soak DOG
+# KUBE_CONTEXT = "qa-advanced"  # Edit this to change the cluster context
+# NAMESPACE = "velocity-rzbirc1krb814pev-services"  # Soak DOG
 #NAMESPACE = "velocity-nc7yvw8shwjniihe-services"  # Soak Cat
-HOURS_BACK = 6  # Number of hours to look back
+#HOURS_BACK = 6  # Number of hours to look back
+
+#config 2
+KUBE_CONTEXT = "dev-dedicated"
+NAMESPACE = "velocity-ksoqrenrugvqxizs-services"
+HOURS_BACK = 6 
 
 # Pod name patterns
 POD_PATTERNS = {

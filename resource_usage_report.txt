@@ -1,0 +1,50 @@
+================================================================================
+TENANT: velocity-ksoqrenrugvqxizs-services
+================================================================================
+
+TOTAL TENANT RESOURCES (All 219 Pods)
+--------------------------------------------------------------------------------
+CPU Requests:    191,875 millicores (191.9 cores)
+Memory Requests: 791,040 MiB (772.5 GiB)
+CPU Limits:      253,750 millicores (253.8 cores)
+Memory Limits:   791,040 MiB (772.5 GiB)
+
+CRASHLOOPING PODS RESOURCES ONLY (101 pods)
+--------------------------------------------------------------------------------
+CPU Requests:    49,000 millicores (49.0 cores)
+Memory Requests: 193,024 MiB (188.5 GiB)
+CPU Limits:      94,000 millicores (94.0 cores)
+Memory Limits:   193,024 MiB (188.5 GiB)
+
+WASTED RESOURCES (Percentage)
+--------------------------------------------------------------------------------
+CPU Waste:       25.5% of total tenant CPU requests
+Memory Waste:    24.4% of total tenant memory requests
+Pods Wasted:     46.1% of total tenant pods
+
+ESTIMATED WASTE COST (AWS Pricing)
+--------------------------------------------------------------------------------
+CPU Cost:        $1.96/hour  ($47.04/day)  ($17169.60/year)
+Memory Cost:     $0.94/hour  ($22.62/day)  ($8256.30/year)
+Total Cost:      $2.90/hour  ($69.66/day)  ($25425.90/year)
+
+
+================================================================================
+TENANT: velocity-idjqgiutf8vkwplv-services
+================================================================================
+
+TOTAL TENANT RESOURCES (All 132 Pods)
+--------------------------------------------------------------------------------
+CPU Requests:    136,625 millicores (136.6 cores)
+Memory Requests: 644,608 MiB (629.5 GiB)
+CPU Limits:      155,250 millicores (155.2 cores)
+Memory Limits:   644,608 MiB (629.5 GiB)
+
+CRASHLOOPING PODS RESOURCES ONLY (0 pods)
+--------------------------------------------------------------------------------
+CPU Requests:    0 millicores (0.0 cores)
+Memory Requests: 0 MiB (0.0 GiB)
+CPU Limits:      0 millicores (0.0 cores)
+Memory Limits:   0 MiB (0.0 GiB)
+
+

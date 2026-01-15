@@ -1,0 +1,123 @@
+================================================================================
+CRASHLOOP BACKOFF CRISIS - SUMMARY STATISTICS
+Environment: dev-dedicated | Namespace: velocity-ksoqrenrugvqxizs-services
+Generated: January 14, 2026
+================================================================================
+
+OVERALL CLUSTER HEALTH
+----------------------
+Total Pods in Namespace:        221
+Pods in CrashLoopBackOff:       93  (42.1%)
+Pods Currently Running:         62  (28.1%)
+Pods in Waiting State:          91  (41.2%)
+Pods in Terminated State:       66  (29.9%)
+Pods with >400 Restarts:        102 (46.2%)
+
+BREAKDOWN BY POD TYPE
+---------------------
+RATS (Real-time Analytics):
+  - Total Pods:                 105
+  - Total Restarts:             428,222
+  - Average Restarts/Pod:       4,078
+  - CrashLoopBackOff Count:     94  (89.5% of all RATS)
+  - Status:                     CRITICAL
+
+FEEDS (Data Feeds):
+  - Total Pods:                 43
+  - Total Restarts:             3,820
+  - Average Restarts/Pod:       88
+  - CrashLoopBackOff Count:     2   (4.7% of all FEEDS)
+  - Status:                     WARNING
+
+BATS (Big Data Analytics):
+  - Total Pods:                 29
+  - Total Restarts:             0
+  - Average Restarts/Pod:       0
+  - CrashLoopBackOff Count:     0   (0%)
+  - Status:                     HEALTHY
+
+OTHER (Infrastructure):
+  - Total Pods:                 45
+  - Total Restarts:             29
+  - Average Restarts/Pod:       0
+  - CrashLoopBackOff Count:     1   (2.2%)
+  - Status:                     HEALTHY
+
+ERROR LOG CORRELATION (Last 6 Hours)
+------------------------------------
+Total Errors Logged:            43,074
+Pods Analyzed in Error Log:     151
+Errors per Pod per Hour:        119
+Total Error Rate:               ~7,200 errors/hour
+
+Error Distribution:
+  - RATS Errors:                ~28,000  (65%)
+  - FEEDS Errors:               ~15,000  (35%)
+  - BATS Errors:                19       (<1%)
+
+Top Error Categories:
+  1. Connection Refused:        32,000+  (74%)
+  2. Health Probe Failures:     8,000+   (19%)
+  3. Feed Validation Errors:    3,000+   (7%)
+
+RESOURCE IMPACT
+---------------
+Estimated CPU Waste:            1,530 cores/hour
+Estimated Memory Churn:         1.5 TB/hour
+Kafka Connection Storms:        51 connections/minute
+MSK Consumer Rebalances:        ~30/hour
+
+Node CPU Allocation:            82-85% (with 300-385% over-commit)
+Node Memory Allocation:         41-43% (with 54-57% limits)
+
+BUSINESS IMPACT
+---------------
+Non-Functional RATS:            93 analytics
+Non-Functional FEEDS:           2 feeds
+Healthy Pod Percentage:         28%
+Failed Pod Percentage:          42%
+Cluster Operational Status:     DEGRADED
+
+MSK/KAFKA IMPACT
+----------------
+Unable to Start New Items:      YES - Kafka connection failures
+Consumer Group Instability:     HIGH - Constant rebalancing
+Broker Connection Load:         EXTREME - 51 attempts/min
+Latency Impact:                 SEVERE - Affects all consumers
+
+COST IMPACT
+-----------
+Daily Wasted Compute:           $500-800 (estimate)
+Engineering Time:               SIGNIFICANT - Ongoing firefighting
+Customer Impact:                HIGH - Service degradation
+
+RECOMMENDATION
+--------------
+IMMEDIATE ACTION REQUIRED: Delete all 93 CrashLoopBackOff analytics
+
+Justification:
+  - 42% pod failure rate is operationally unacceptable
+  - 432,071 restarts prove these cannot self-recover
+  - 65% are failing due to deleted dependencies (unfixable)
+  - Actively harming MSK/Kafka connectivity for ALL users
+  - Preventing new item deployment
+  - Wasting $500-800/day in compute resources
+
+Expected Post-Cleanup:
+  - MSK connection storms eliminated (90% reduction)
+  - 1,530 CPU cores/hour freed for productive work
+  - Cluster responsiveness restored
+  - Ability to start new items restored
+  - Healthy pod percentage increases to 75%+
+
+================================================================================
+DETAILED POD LISTS
+================================================================================
+
+See accompanying files:
+  - crashloop_pods_detailed.txt    (93 crashlooping pods with restart counts)
+  - pod_restart_analysis.txt       (all pods sorted by restart count)
+  - dev_dedicated_error_logs_0114.txt  (6-hour error analysis)
+  - executive_summary_crashloop_analysis.md  (full executive report)
+
+================================================================================

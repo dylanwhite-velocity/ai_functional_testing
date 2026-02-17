@@ -1,0 +1,22 @@
+# Output logs
+logs/*.json
+logs/*.txt
+logs/*.md
+
+# Keep the logs directory
+!logs/.gitkeep
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.env
+.venv/
+
+# IDE
+.idea/
+*.swp
+*.swo
+
+# macOS
+.DS_Store

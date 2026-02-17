@@ -21,10 +21,16 @@ soak-monitoring-logs/
 
 ## Prerequisites
 
-- Python 3.9+
-- `httpx` and `pyyaml` packages
+- Python 3.11+
 - kubectl configured with cluster contexts
 - Access to SUTConfig via AWS Secrets Manager (common package)
+
+## Installation
+
+From the project root:
+```bash
+pip install -e ".[soak-monitoring]"
+```
 
 ## Usage
 

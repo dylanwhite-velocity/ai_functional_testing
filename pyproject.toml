@@ -41,6 +41,10 @@ mcp = [
     "mcp>=1.0.0",
     "httpx>=0.25.0",
 ]
+soak-monitoring = [
+    "httpx>=0.25.0",
+    "pyyaml>=6.0",
+]
 
 [project.urls]
 Repository = "https://devtopia.esri.com/WebGIS/ai-functional-testing"

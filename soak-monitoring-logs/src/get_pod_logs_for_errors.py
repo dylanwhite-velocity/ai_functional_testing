@@ -1,17 +1,16 @@
 #!/usr/bin/env python3
-"""
-Kubernetes Pod Log Fetcher for Velocity Items with Errors
+"""Kubernetes Pod Log Fetcher for Velocity Items with Errors.
 
-Reads the output from get_velocity_item_logs.py and fetches corresponding 
+Reads the output from get_velocity_item_logs.py and fetches corresponding
 Kubernetes pod logs for items that have errors.
 
 Usage:
     # Using environments config (recommended for multi-env):
     python get_pod_logs_for_errors.py <velocity_errors.json> --config environments.yaml
-    
+
     # Single environment with explicit context/namespace:
     python get_pod_logs_for_errors.py <velocity_errors.json> --context <kube_context> --namespace <namespace>
-    
+
     # Direct item IDs:
     python get_pod_logs_for_errors.py --item-ids abc123,def456 --context qa-advanced --namespace velocity-xxx-services
 
@@ -31,9 +30,9 @@ import re
 import subprocess
 import sys
 from datetime import datetime
-from typing import Dict, List, Any, Optional
-import yaml
+from typing import Any, Dict, List, Optional
 
+import yaml
 
 # Pod patterns by item type
 POD_PATTERNS = {
@@ -45,9 +44,12 @@ POD_PATTERNS = {
         "pattern": r"^rats-{item_id}-[0-9]+$",
         "prefix": "rats-"
     },
+    # BAT pods use flexible matching — see find_bat_pods()
+    # Driver pattern:   cb{item_id[:15]}-{timestamp}-driver
+    # Executor pattern: {char}{item_id[1:]}-{hash}-exec-{N}
     "bigdata_analytic": {
-        "pattern": r"^cb{item_id}-[0-9]+-driver$",
-        "prefix": "cb"
+        "pattern": None,
+        "prefix": None
     }
 }
 
@@ -90,12 +92,63 @@ def get_all_pods(context: str, namespace: str) -> List[Dict]:
         return []
 
 
+def get_pod_creation_time(pod: Dict) -> str:
+    """Get the creation timestamp of a pod for sorting."""
+    return pod.get("metadata", {}).get("creationTimestamp", "")
+
+
+def get_newest_pod(pods: List[Dict]) -> Optional[Dict]:
+    """Return the newest pod by creation timestamp."""
+    if not pods:
+        return None
+    return max(pods, key=lambda p: get_pod_creation_time(p))
+
+
+def find_bat_pods(item_id: str, all_pods: List[Dict]) -> List[Dict]:
+    """Find BAT (big data analytic) pods using flexible matching.
+    
+    BAT pods have two naming patterns:
+      - Driver:   cb{item_id[:15]}-{timestamp}-driver
+      - Executor: {char}{item_id[1:]}-{hash}-exec-{N}
+    
+    We use substring matching with the item ID and verify the pod
+    has a BAT-related suffix (-driver or -exec-).
+    """
+    matching_pods = []
+    
+    # Build search keys — substrings of the item ID present in pod names
+    search_keys = [
+        item_id,            # full item ID (exact match, unlikely but covers edge cases)
+        item_id[:15],       # truncated ID used in driver pods (cb{id[:15]}-...)
+        item_id[1:],        # ID minus first char (executor pods swap first char)
+    ]
+    
+    bat_suffixes = ("-driver", "-exec-")
+    
+    for pod in all_pods:
+        pod_name = pod["metadata"]["name"]
+        # Pod must have a BAT-related suffix
+        if not any(suffix in pod_name for suffix in bat_suffixes):
+            continue
+        # Check if any search key substring appears in the pod name
+        for key in search_keys:
+            if key in pod_name:
+                matching_pods.append(pod)
+                break
+    
+    return matching_pods
+
+
 def find_pods_for_item(item_id: str, item_type: str, all_pods: List[Dict]) -> List[Dict]:
     """Find pods matching an item ID and type."""
+    # BATs use flexible substring matching
+    if item_type == "bigdata_analytic":
+        return find_bat_pods(item_id, all_pods)
+    
     matching_pods = []
     
     pattern_config = POD_PATTERNS.get(item_type)
-    if not pattern_config:
+    if not pattern_config or not pattern_config.get("pattern"):
         for pod in all_pods:
             pod_name = pod["metadata"]["name"]
             if item_id in pod_name:
@@ -353,7 +406,13 @@ def main(errors_file: Optional[str], item_ids: Optional[str],
             })
             continue
         
-        print(f"  Found {len(matching_pods)} pod(s)")
+        # For BATs, only analyze the newest pod (latest Spark run)
+        if item_type == "bigdata_analytic" and len(matching_pods) > 1:
+            newest = get_newest_pod(matching_pods)
+            print(f"  Found {len(matching_pods)} BAT pod(s), selecting newest only")
+            matching_pods = [newest] if newest else matching_pods
+        else:
+            print(f"  Found {len(matching_pods)} pod(s)")
         
         pod_results = []
         

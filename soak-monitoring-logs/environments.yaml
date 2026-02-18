@@ -3,8 +3,8 @@
 
 # Log fetch settings
 settings:
-  velocity_hours: 24    # Hours to look back for Velocity API logs
-  pod_hours: 6          # Hours to look back for K8s pod logs
+  velocity_hours: 12    # Hours to look back for Velocity API logs
+  pod_hours: 12          # Hours to look back for K8s pod logs
 
 instances:
   - name: qa-advanced
@@ -12,15 +12,20 @@ instances:
     usernames:
       - neo_admin_soak_dog
 
-  - name: qa-dedicated
-    organizationId: 8q6rrqvpilhwr3sc
-    usernames:
-      - neo_soak_solutions_admin
-
   # - name: qa-advanced
   #   organizationId: nc7yvw8shwjniihe
   #   usernames:
   #     - neo_admin_soak_cat
+
+  # - name: qa-advanced
+  #   organizationId: noxnhdppsju1jrte
+  #   usernames:
+  #     - soak_neo_admin_uber_item
+
+  # - name: qa-dedicated
+  #   organizationId: 8q6rrqvpilhwr3sc
+  #   usernames:
+  #     - neo_soak_solutions_admin
 
 # Kubernetes namespace pattern: velocity-{organizationId}-services
 # Kubernetes context typically matches the instance name

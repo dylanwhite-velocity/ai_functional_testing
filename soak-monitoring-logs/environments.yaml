@@ -3,8 +3,8 @@
 
 # Log fetch settings
 settings:
-  velocity_hours: 12    # Hours to look back for Velocity API logs
-  pod_hours: 12          # Hours to look back for K8s pod logs
+  velocity_hours: 1    # Hours to look back for Velocity API logs
+  pod_hours: 1          # Hours to look back for K8s pod logs
 
 # OpenAI settings for report generation
 openai:

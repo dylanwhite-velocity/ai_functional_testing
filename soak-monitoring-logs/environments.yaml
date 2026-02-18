@@ -6,6 +6,19 @@ settings:
   velocity_hours: 12    # Hours to look back for Velocity API logs
   pod_hours: 12          # Hours to look back for K8s pod logs
 
+# OpenAI settings for report generation
+openai:
+  provider: azure                     # azure or openai
+  secret_name: RASP/openai/dylan      # AWS Secrets Manager secret name
+  secret_key_field: AZUREOPENAI_API_KEY  # JSON field containing the API key
+  model: gpt-5                        # Model name
+  temperature: ~                     # GPT-5 only supports default (1); set 0.3 for other models
+  max_tokens: 16384                  # Max response length
+  # Azure-specific settings:
+  azure_endpoint: "https://ist-apim-aoai.azure-api.net/load-balancing/gpt-5"
+  azure_api_version: "2024-10-21"
+  azure_deployment: gpt-5
+
 instances:
   - name: qa-advanced
     organizationId: rzbirc1krb814pev

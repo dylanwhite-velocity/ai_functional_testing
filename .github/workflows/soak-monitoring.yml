@@ -124,6 +124,23 @@ jobs:
       # ─────────────────────────────────────────────────────
       # Step 2: Fetch Kubernetes pod logs (EKS)
       # ─────────────────────────────────────────────────────
+      - name: Verify EKS secrets are set
+        if: steps.velocity.outputs.errors != '0'
+        run: |
+          if [[ -z "${{ secrets.AWS_EKS_ACCESS_KEY_ID }}" ]]; then
+            echo "::error::AWS_EKS_ACCESS_KEY_ID secret is not set"
+            exit 1
+          fi
+          if [[ -z "${{ secrets.AWS_EKS_SECRET_ACCESS_KEY }}" ]]; then
+            echo "::error::AWS_EKS_SECRET_ACCESS_KEY secret is not set"
+            exit 1
+          fi
+          if [[ -z "${{ secrets.AWS_EKS_ROLE_ARN }}" ]]; then
+            echo "::error::AWS_EKS_ROLE_ARN secret is not set"
+            exit 1
+          fi
+          echo "All EKS secrets are configured"
+
       - name: Configure AWS – EKS
         if: steps.velocity.outputs.errors != '0'
         uses: aws-actions/configure-aws-credentials@v4
@@ -131,7 +148,9 @@ jobs:
           aws-access-key-id: ${{ secrets.AWS_EKS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_EKS_SECRET_ACCESS_KEY }}
           role-to-assume: ${{ secrets.AWS_EKS_ROLE_ARN }}
+          role-session-name: soak-monitoring-eks
           aws-region: ${{ env.AWS_REGION }}
+          unset-current-credentials: true
 
       - name: Configure kubeconfig
         if: steps.velocity.outputs.errors != '0'

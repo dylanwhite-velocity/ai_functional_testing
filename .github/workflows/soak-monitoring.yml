@@ -1,0 +1,164 @@
+# Soak Monitoring Workflow
+# Runs the full soak monitoring pipeline on a schedule:
+#   1. Fetch Velocity item logs (API)
+#   2. Fetch Kubernetes pod logs (kubectl)
+#   3. Generate summary report (Azure OpenAI)
+#   4. Upload report as GitHub Actions artifact
+#
+# Trigger: Daily cron schedule + manual dispatch
+#
+# Required GitHub Secrets:
+#   AWS_ACCESS_KEY_ID     - AWS IAM key for Secrets Manager access
+#   AWS_SECRET_ACCESS_KEY - AWS IAM secret
+#   AWS_REGION            - AWS region (default: us-west-2)
+#   KUBECONFIG_BASE64     - Base64-encoded kubeconfig for target clusters
+#
+# Or use OIDC federation (preferred):
+#   AWS_ROLE_ARN          - IAM role ARN for OIDC federation
+
+name: Soak Monitoring
+
+on:
+  # Daily at 9:00 AM UTC (2:00 AM MST)
+  schedule:
+    - cron: '0 9 * * *'
+
+  # Manual trigger with optional overrides
+  workflow_dispatch:
+    inputs:
+      velocity_hours:
+        description: 'Hours to look back for Velocity logs (default: from config)'
+        required: false
+        type: number
+      pod_hours:
+        description: 'Hours to look back for pod logs (default: from config)'
+        required: false
+        type: number
+      item_type:
+        description: 'Filter by item type'
+        required: false
+        type: choice
+        options:
+          - all
+          - feeds
+          - rats
+          - bats
+      dry_run:
+        description: 'Dry run (skip OpenAI API call)'
+        required: false
+        type: boolean
+        default: false
+      report_only:
+        description: 'Report-only mode (skip data collection)'
+        required: false
+        type: boolean
+        default: false
+
+env:
+  AWS_REGION: us-west-2
+
+jobs:
+  soak-monitor:
+    name: Run Soak Monitoring
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    # Uncomment for OIDC federation (preferred over IAM keys):
+    # permissions:
+    #   id-token: write
+    #   contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install ".[soak-monitoring]"
+
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: 'v1.31.3'
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          # Option A: IAM access keys (store in GitHub Secrets)
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+          # Option B: OIDC federation (uncomment and set role ARN)
+          # role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          # aws-region: ${{ env.AWS_REGION }}
+
+      - name: Configure kubeconfig
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBECONFIG_BASE64 }}" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+          echo "Available contexts:"
+          kubectl config get-contexts -o name
+
+      - name: Verify cluster access
+        run: |
+          # Test connectivity to each configured context
+          for ctx in $(kubectl config get-contexts -o name); do
+            echo "Testing context: $ctx"
+            kubectl --context "$ctx" cluster-info --request-timeout=10s 2>&1 | head -2 || echo "  WARNING: Cannot reach $ctx"
+          done
+
+      - name: Run soak monitoring workflow
+        working-directory: soak-monitoring-logs
+        run: |
+          # Build command with optional overrides
+          CMD="python src/run_soak_monitor.py --config environments.yaml"
+
+          # Apply manual dispatch overrides
+          if [[ "${{ inputs.velocity_hours }}" != "" ]]; then
+            CMD="$CMD --velocity-hours ${{ inputs.velocity_hours }}"
+          fi
+          if [[ "${{ inputs.pod_hours }}" != "" ]]; then
+            CMD="$CMD --pod-hours ${{ inputs.pod_hours }}"
+          fi
+          if [[ "${{ inputs.item_type }}" != "" && "${{ inputs.item_type }}" != "all" ]]; then
+            CMD="$CMD --type ${{ inputs.item_type }}"
+          fi
+          if [[ "${{ inputs.dry_run }}" == "true" ]]; then
+            CMD="$CMD --dry-run"
+          fi
+
+          echo "Running: $CMD"
+          eval $CMD
+
+      - name: Upload report artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: soak-monitoring-report-${{ github.run_number }}
+          path: |
+            soak-monitoring-logs/logs/report_*.md
+            soak-monitoring-logs/logs/velocity_errors_*.json
+            soak-monitoring-logs/logs/pod_logs_*.json
+          retention-days: 30
+          if-no-files-found: warn
+
+      - name: Print report summary
+        if: always()
+        working-directory: soak-monitoring-logs
+        run: |
+          REPORT=$(ls -t logs/report_*.md 2>/dev/null | head -1)
+          if [[ -n "$REPORT" ]]; then
+            echo "## Soak Monitoring Report" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            cat "$REPORT" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "## No report generated" >> $GITHUB_STEP_SUMMARY
+            echo "Check the workflow logs for errors." >> $GITHUB_STEP_SUMMARY
+          fi

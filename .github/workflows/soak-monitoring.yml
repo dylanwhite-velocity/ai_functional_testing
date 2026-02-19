@@ -1,27 +1,31 @@
 # Soak Monitoring Workflow
 # Runs the full soak monitoring pipeline on a schedule:
-#   1. Fetch Velocity item logs (API)
-#   2. Fetch Kubernetes pod logs (kubectl)
-#   3. Generate summary report (Azure OpenAI)
+#   1. Fetch Velocity item logs (API)             — needs Secrets Manager (account A)
+#   2. Fetch Kubernetes pod logs (kubectl)         — needs EKS access   (account B)
+#   3. Generate summary report (Azure OpenAI)     — needs Secrets Manager (account A)
 #   4. Upload report as GitHub Actions artifact
+#
+# Cross-account setup:
+#   Secrets Manager lives in the default AWS account (AWS_ACCESS_KEY_ID).
+#   EKS clusters live in a separate account; the QA creds assume an eks-admin role.
+#   The workflow switches credentials between steps accordingly.
 #
 # Trigger: Daily cron schedule + manual dispatch
 #
 # Required GitHub Secrets:
-#   AWS_ACCESS_KEY_ID     - AWS IAM key for Secrets Manager access
-#   AWS_SECRET_ACCESS_KEY - AWS IAM secret
-#   AWS_REGION            - AWS region (default: us-west-2)
-#   KUBECONFIG_BASE64     - Base64-encoded kubeconfig for target clusters
-#
-# Or use OIDC federation (preferred):
-#   AWS_ROLE_ARN          - IAM role ARN for OIDC federation
+#   AWS_ACCESS_KEY_ID          - IAM key for Secrets Manager (account 591949011095)
+#   AWS_SECRET_ACCESS_KEY      - IAM secret for Secrets Manager
+#   AWS_EKS_ACCESS_KEY_ID      - IAM key for EKS account (199613768778)
+#   AWS_EKS_SECRET_ACCESS_KEY  - IAM secret for EKS account
+#   AWS_EKS_ROLE_ARN           - Role to assume for EKS (arn:aws:iam::199613768778:role/eks-admin)
+#   KUBECONFIG_BASE64          - Base64-encoded kubeconfig (qa-* contexts, no AWS_PROFILE)
 
 name: Soak Monitoring
 
 on:
-  # Daily at 9:00 AM UTC (2:00 AM MST)
+  # Daily at 3:00 PM UTC (8:00 AM MST)
   schedule:
-    - cron: '0 9 * * *'
+    - cron: '0 15 * * *'
 
   # Manual trigger with optional overrides
   workflow_dispatch:
@@ -48,25 +52,16 @@ on:
         required: false
         type: boolean
         default: false
-      report_only:
-        description: 'Report-only mode (skip data collection)'
-        required: false
-        type: boolean
-        default: false
 
 env:
   AWS_REGION: us-west-2
+  PYTHONPATH: ${{ github.workspace }}
 
 jobs:
   soak-monitor:
     name: Run Soak Monitoring
     runs-on: ubuntu-latest
     timeout-minutes: 30
-
-    # Uncomment for OIDC federation (preferred over IAM keys):
-    # permissions:
-    #   id-token: write
-    #   contents: read
 
     steps:
       - name: Checkout repository
@@ -86,19 +81,60 @@ jobs:
         with:
           version: 'v1.31.3'
 
-      - name: Configure AWS credentials
+      # ─────────────────────────────────────────────────────
+      # Step 1: Fetch Velocity item logs (Secrets Manager)
+      # ─────────────────────────────────────────────────────
+      - name: Configure AWS – Secrets Manager
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          # Option A: IAM access keys (store in GitHub Secrets)
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-          # Option B: OIDC federation (uncomment and set role ARN)
-          # role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          # aws-region: ${{ env.AWS_REGION }}
+      - name: 'Step 1: Fetch Velocity item logs'
+        working-directory: soak-monitoring-logs
+        run: |
+          CMD="python src/get_velocity_item_logs.py --config environments.yaml"
+          if [[ "${{ inputs.velocity_hours }}" != "" ]]; then
+            CMD="$CMD --hours ${{ inputs.velocity_hours }}"
+          fi
+          if [[ "${{ inputs.item_type }}" != "" && "${{ inputs.item_type }}" != "all" ]]; then
+            CMD="$CMD --type ${{ inputs.item_type }}"
+          fi
+          echo "Running: $CMD"
+          eval $CMD
+
+      - name: Locate velocity errors file
+        id: velocity
+        working-directory: soak-monitoring-logs
+        run: |
+          FILE=$(ls -t logs/velocity_errors_*.json 2>/dev/null | head -1)
+          echo "file=$FILE" >> "$GITHUB_OUTPUT"
+          if [[ -z "$FILE" ]]; then
+            echo "::error::No velocity_errors JSON found"
+            exit 1
+          fi
+          echo "Found: $FILE"
+
+          # Check if there are errors worth investigating
+          TOTAL=$(python3 -c "import json; d=json.load(open('$FILE')); print(d.get('summary',{}).get('total_items_with_errors',0))")
+          echo "errors=$TOTAL" >> "$GITHUB_OUTPUT"
+          echo "Items with errors: $TOTAL"
+
+      # ─────────────────────────────────────────────────────
+      # Step 2: Fetch Kubernetes pod logs (EKS)
+      # ─────────────────────────────────────────────────────
+      - name: Configure AWS – EKS
+        if: steps.velocity.outputs.errors != '0'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_EKS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_EKS_SECRET_ACCESS_KEY }}
+          role-to-assume: ${{ secrets.AWS_EKS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
 
       - name: Configure kubeconfig
+        if: steps.velocity.outputs.errors != '0'
         run: |
           mkdir -p ~/.kube
           echo "${{ secrets.KUBECONFIG_BASE64 }}" | base64 -d > ~/.kube/config
@@ -107,36 +143,68 @@ jobs:
           kubectl config get-contexts -o name
 
       - name: Verify cluster access
+        if: steps.velocity.outputs.errors != '0'
         run: |
-          # Test connectivity to each configured context
           for ctx in $(kubectl config get-contexts -o name); do
             echo "Testing context: $ctx"
             kubectl --context "$ctx" cluster-info --request-timeout=10s 2>&1 | head -2 || echo "  WARNING: Cannot reach $ctx"
           done
 
-      - name: Run soak monitoring workflow
+      - name: 'Step 2: Fetch Kubernetes pod logs'
+        if: steps.velocity.outputs.errors != '0'
         working-directory: soak-monitoring-logs
         run: |
-          # Build command with optional overrides
-          CMD="python src/run_soak_monitor.py --config environments.yaml"
-
-          # Apply manual dispatch overrides
-          if [[ "${{ inputs.velocity_hours }}" != "" ]]; then
-            CMD="$CMD --velocity-hours ${{ inputs.velocity_hours }}"
-          fi
+          CMD="python src/get_pod_logs_for_errors.py ${{ steps.velocity.outputs.file }} --config environments.yaml"
           if [[ "${{ inputs.pod_hours }}" != "" ]]; then
-            CMD="$CMD --pod-hours ${{ inputs.pod_hours }}"
+            CMD="$CMD --hours ${{ inputs.pod_hours }}"
           fi
-          if [[ "${{ inputs.item_type }}" != "" && "${{ inputs.item_type }}" != "all" ]]; then
-            CMD="$CMD --type ${{ inputs.item_type }}"
-          fi
-          if [[ "${{ inputs.dry_run }}" == "true" ]]; then
-            CMD="$CMD --dry-run"
-          fi
-
           echo "Running: $CMD"
           eval $CMD
 
+      - name: Skip pod logs (no errors)
+        if: steps.velocity.outputs.errors == '0'
+        run: echo "No items with errors — skipping pod log collection."
+
+      # ─────────────────────────────────────────────────────
+      # Step 3: Generate report (Secrets Manager for API key)
+      # ─────────────────────────────────────────────────────
+      - name: Configure AWS – Secrets Manager (report)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Prepare pod logs for report
+        id: podlogs
+        working-directory: soak-monitoring-logs
+        run: |
+          POD_FILE=$(ls -t logs/pod_logs_*.json 2>/dev/null | head -1)
+          if [[ -z "$POD_FILE" ]]; then
+            # No pod logs (healthy environment) — create an empty placeholder
+            TS=$(date +%Y%m%d_%H%M%S)
+            POD_FILE="logs/pod_logs_${TS}_empty.json"
+            echo '{"generated_at":"'"$(date -Iseconds)"'","summary":{"items_processed":0,"items_with_pods":0,"total_pods_analyzed":0,"total_pod_errors":0},"items":[]}' > "$POD_FILE"
+            echo "Created empty pod logs placeholder: $POD_FILE"
+          fi
+          echo "file=$POD_FILE" >> "$GITHUB_OUTPUT"
+
+      - name: 'Step 3: Generate report'
+        working-directory: soak-monitoring-logs
+        run: |
+          CMD="python src/generate_report.py"
+          CMD="$CMD --velocity-errors ${{ steps.velocity.outputs.file }}"
+          CMD="$CMD --pod-logs ${{ steps.podlogs.outputs.file }}"
+          CMD="$CMD --config environments.yaml"
+          if [[ "${{ inputs.dry_run }}" == "true" ]]; then
+            CMD="$CMD --dry-run"
+          fi
+          echo "Running: $CMD"
+          eval $CMD
+
+      # ─────────────────────────────────────────────────────
+      # Artifacts & Summary
+      # ─────────────────────────────────────────────────────
       - name: Upload report artifact
         if: always()
         uses: actions/upload-artifact@v4

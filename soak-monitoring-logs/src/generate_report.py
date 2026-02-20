@@ -63,6 +63,42 @@ def load_template(template_path: Optional[str] = None) -> str:
         return ""
 
 
+def load_system_prompt(prompt_path: Optional[str] = None) -> str:
+    """Load the system prompt from templates/system_prompt.md.
+
+    The file uses a front-matter style format: everything above the first
+    '---' separator is treated as comments, everything below is the prompt.
+    If no separator is found, the entire file content is used.
+    """
+    if prompt_path is None:
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        prompt_path = os.path.join(os.path.dirname(script_dir), "templates", "system_prompt.md")
+
+    try:
+        with open(prompt_path, "r") as f:
+            content = f.read()
+    except FileNotFoundError:
+        print(f"  Warning: System prompt not found at {prompt_path}, using built-in default")
+        return _DEFAULT_SYSTEM_PROMPT
+
+    # Split on the first '---' separator — content after it is the prompt
+    parts = content.split("---", 1)
+    prompt = parts[1].strip() if len(parts) > 1 else content.strip()
+
+    if not prompt:
+        print("  Warning: System prompt file is empty, using built-in default")
+        return _DEFAULT_SYSTEM_PROMPT
+
+    return prompt
+
+
+# Fallback in case the file is missing or empty
+_DEFAULT_SYSTEM_PROMPT = """You are an expert Site Reliability Engineer analyzing ArcGIS Velocity soak environment health.
+Your task is to generate a comprehensive monitoring report from structured log data.
+Be precise and factual. Only reference errors/data present in the provided data.
+The report should be ready to share with the engineering team without additional editing."""
+
+
 def resolve_glob_pattern(pattern: str) -> str:
     """Resolve a glob pattern to the most recent matching file.
 
@@ -186,23 +222,7 @@ def build_prompt(
     Returns:
         Tuple of (system_prompt, user_prompt)
     """
-    system_prompt = """You are an expert Site Reliability Engineer analyzing ArcGIS Velocity soak environment health.
-Your task is to generate a comprehensive monitoring report from structured log data.
-
-Guidelines:
-- Be precise and factual. Only reference errors/data present in the provided data.
-- Categorize severity: CRITICAL (crash loops, OOM, service down), HIGH (persistent errors affecting functionality), LOW (warnings, intermittent issues that self-resolve).
-- For each item with errors, provide: root cause analysis, error summary, and actionable recommendations.
-- Use pod log errors as the primary diagnostic source when pods are found.
-- When no pods are found, use the Velocity API errors marked "(primary — no pods found)" as the diagnostic source.
-- Include healthy items as a summary table — do not analyze them individually.
-- Prioritize recommendations from most to least urgent.
-- Use the report template structure provided, filling in all sections.
-- Use markdown formatting with emoji severity indicators: :red_circle: CRITICAL, :orange_circle: HIGH, :yellow_circle: LOW.
-- Keep the executive summary to 2-3 sentences.
-- Error entries with [Nx] indicate the error occurred N times in the window.
-
-The report should be ready to share with the engineering team without additional editing."""
+    system_prompt = load_system_prompt()
 
     # Build compact text summary
     data_summary = summarize_pod_logs(pod_logs)

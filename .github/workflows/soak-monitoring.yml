@@ -148,6 +148,7 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           role-to-assume: arn:aws:iam::199613768778:role/eks-admin
           role-session-name: soak-monitoring-eks
+          role-skip-session-tagging: true
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Configure kubeconfig

@@ -1,7 +1,7 @@
 # Soak Monitoring Workflow
 # Runs the full soak monitoring pipeline on a schedule:
 #   1. Fetch Velocity item logs (API)             — needs Secrets Manager
-#   2. Fetch Kubernetes pod logs (kubectl)         — needs EKS access (eks-admin role)
+#   2. Fetch Kubernetes pod logs (kubectl)         — needs EKS access (eks-readonly role)
 #   3. Generate summary report (Azure OpenAI)     — needs Secrets Manager
 #   4. Upload report as GitHub Actions artifact
 #
@@ -17,7 +17,7 @@
 # Required GitHub Secrets:
 #   AWS_ACCESS_KEY_ID          - IAM access key for Secrets Manager (account 591949011095)
 #   AWS_SECRET_ACCESS_KEY      - IAM secret key for Secrets Manager
-#   AWS_EKS_ACCESS_KEY_ID      - IAM access key for EKS (authorized to assume eks-admin)
+#   AWS_EKS_ACCESS_KEY_ID      - IAM access key for EKS (authorized to assume eks-readonly)
 #   AWS_EKS_SECRET_ACCESS_KEY  - IAM secret key for EKS
 
 name: Soak Monitoring
@@ -139,7 +139,7 @@ jobs:
       - name: Configure kubeconfig
         if: steps.velocity.outputs.errors != '0'
         run: |
-          # Extract EKS cluster mappings (cluster_name -> context alias) from environments.yaml
+          # Extract EKS cluster mappings (cluster_name, context alias, role_arn) from environments.yaml
           python3 << 'PYSCRIPT' > /tmp/eks_clusters.txt
           import yaml
           with open('soak-monitoring-logs/environments.yaml') as f:
@@ -148,18 +148,23 @@ jobs:
           for inst in config.get('instances', []):
               name = inst.get('name')
               cluster = inst.get('cluster_name', name)
+              role_arn = inst.get('role_arn', '')
               key = f"{cluster}:{name}"
               if name and key not in seen:
                   seen.add(key)
-                  print(f"{cluster} {name}")
+                  print(f"{cluster} {name} {role_arn}")
           PYSCRIPT
 
           echo "Cluster mappings:"
           cat /tmp/eks_clusters.txt
 
-          while read -r CLUSTER ALIAS; do
-            echo "--- Updating kubeconfig: cluster=$CLUSTER alias=$ALIAS"
-            aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name "$CLUSTER" --alias "$ALIAS"
+          while read -r CLUSTER ALIAS ROLE_ARN; do
+            echo "--- Updating kubeconfig: cluster=$CLUSTER alias=$ALIAS role=$ROLE_ARN"
+            CMD="aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name $CLUSTER --alias $ALIAS"
+            if [[ -n "$ROLE_ARN" ]]; then
+              CMD="$CMD --role-arn $ROLE_ARN"
+            fi
+            eval $CMD
           done < /tmp/eks_clusters.txt
 
           echo "Available contexts:"
@@ -168,10 +173,18 @@ jobs:
       - name: Verify cluster access
         if: steps.velocity.outputs.errors != '0'
         run: |
+          FAILED=0
           for ctx in $(kubectl config get-contexts -o name); do
             echo "Testing context: $ctx"
-            kubectl --context "$ctx" cluster-info --request-timeout=10s 2>&1 | head -2 || echo "  WARNING: Cannot reach $ctx"
+            if ! kubectl --context "$ctx" cluster-info --request-timeout=10s 2>&1 | head -2; then
+              echo "::error::Cannot authenticate to cluster context: $ctx"
+              FAILED=1
+            fi
           done
+          if [[ $FAILED -ne 0 ]]; then
+            echo "::error::One or more cluster contexts failed authentication. Check IAM role_arn in environments.yaml."
+            exit 1
+          fi
 
       - name: 'Step 2: Fetch Kubernetes pod logs'
         if: steps.velocity.outputs.errors != '0'

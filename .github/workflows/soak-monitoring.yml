@@ -6,16 +6,19 @@
 #   4. Upload report as GitHub Actions artifact
 #
 # AWS setup:
-#   A single IAM user (AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY) provides
-#   access to Secrets Manager (account 591949011095) and EKS by assuming
-#   the eks-admin role in the EKS account (199613768778).
+#   Secrets Manager uses the dwhite-cli IAM user (AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY)
+#   in account 591949011095.
+#   EKS access uses a separate IAM user (AWS_EKS_ACCESS_KEY_ID / AWS_EKS_SECRET_ACCESS_KEY)
+#   that assumes the eks-admin role in the EKS account (199613768778).
 #   Kubeconfig is generated dynamically via `aws eks update-kubeconfig`.
 #
 # Trigger: Daily cron schedule + manual dispatch
 #
 # Required GitHub Secrets:
-#   AWS_ACCESS_KEY_ID          - IAM access key (account 591949011095)
-#   AWS_SECRET_ACCESS_KEY      - IAM secret key
+#   AWS_ACCESS_KEY_ID          - IAM access key for Secrets Manager (account 591949011095)
+#   AWS_SECRET_ACCESS_KEY      - IAM secret key for Secrets Manager
+#   AWS_EKS_ACCESS_KEY_ID      - IAM access key for EKS (authorized to assume eks-admin)
+#   AWS_EKS_SECRET_ACCESS_KEY  - IAM secret key for EKS
 
 name: Soak Monitoring
 
@@ -144,8 +147,8 @@ jobs:
         if: steps.velocity.outputs.errors != '0'
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-access-key-id: ${{ secrets.AWS_EKS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_EKS_SECRET_ACCESS_KEY }}
           role-to-assume: arn:aws:iam::199613768778:role/eks-admin
           role-session-name: soak-monitoring-eks
           role-skip-session-tagging: true

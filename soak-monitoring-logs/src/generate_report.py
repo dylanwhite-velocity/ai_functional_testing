@@ -1,27 +1,25 @@
 #!/usr/bin/env python3
 """Generate soak monitoring report using OpenAI API.
 
-Reads Velocity error logs and pod logs JSON files, combines them with the
-report template, and sends to OpenAI to generate a standardized markdown report.
+Reads the combined pod-logs JSON file (which includes Velocity error context
+per item) and the report template, then sends a compact prompt to OpenAI to
+generate a standardized markdown report.
+
+The pod-logs file is the *sole* data source for the report.  Velocity API
+errors are used upstream only to identify which items to investigate; the
+compact error summaries are embedded in the pod-logs output so the report
+still has context when no Kubernetes pods are found.
 
 Usage:
     # Using environments config (reads openai settings from it):
     python generate_report.py \
-        --velocity-errors logs/velocity_errors_*.json \
         --pod-logs logs/pod_logs_*.json \
         --config environments.yaml
 
-    # With explicit options:
-    python generate_report.py \
-        --velocity-errors logs/velocity_errors_20260218.json \
-        --pod-logs logs/pod_logs_20260218.json \
-        --model gpt-4o \
-        --output logs/report_20260218.md
-
     # Dry run (print prompt without calling API):
     python generate_report.py \
-        --velocity-errors logs/velocity_errors_*.json \
         --pod-logs logs/pod_logs_*.json \
+        --config environments.yaml \
         --dry-run
 """
 
@@ -38,10 +36,10 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 from openai_config import OpenAIConfig, load_openai_config
 
-# Maximum characters of JSON data to include in the prompt.
+# Maximum characters of combined data to include in the prompt.
 # gpt-4o-mini has 128K context window (~400K chars).
-# We cap at 200K chars to leave room for system prompt + response.
-MAX_DATA_CHARS = 200_000
+# We target compact summaries; this limit is a safety cap.
+MAX_DATA_CHARS = 60_000
 
 
 def load_json_file(file_path: str) -> Dict[str, Any]:
@@ -80,63 +78,110 @@ def resolve_glob_pattern(pattern: str) -> str:
     return pattern
 
 
-def truncate_data(data: Dict[str, Any], max_chars: int) -> str:
-    """Serialize JSON data, truncating if necessary.
+def summarize_pod_logs(data: Dict[str, Any]) -> str:
+    """Build a compact text summary of the combined pod log data for the LLM.
 
-    Truncation strategy:
-    1. Try full JSON first
-    2. If too large, truncate pod full_logs (biggest offender)
-    3. If still too large, limit error samples per item
+    The pod-logs file is the sole data source for the report.  Each item
+    contains:
+      - Kubernetes pod log data (primary diagnostic source)
+      - Compact Velocity API error summaries (fallback context when no pods
+        are found, or supplementary info when pods exist)
+
+    Produces structured plain text that preserves all analytical value while
+    drastically reducing token count vs. raw JSON.
     """
-    # First pass: truncate full_logs in pod data
-    data_copy = json.loads(json.dumps(data, default=str))
+    lines: List[str] = []
 
-    # Truncate full_logs if present (these are the largest fields)
-    if "items" in data_copy:
-        for item in data_copy["items"]:
-            for pod in item.get("pods", []):
-                full_logs = pod.get("full_logs", "")
-                if len(full_logs) > 5000:
-                    pod["full_logs"] = full_logs[:2500] + "\n...[truncated]...\n" + full_logs[-2500:]
+    summary = data.get("summary", {})
+    lines.append("=== Soak Monitoring Data ===")
+    lines.append(f"Generated: {data.get('generated_at', 'N/A')}")
+    lines.append(f"Hours back: {data.get('hours_back', '?')}")
+    lines.append(f"Environments processed: {summary.get('environments_processed', '?')}")
+    lines.append(f"Items processed: {summary.get('items_processed', 0)}")
+    lines.append(f"Items with pods: {summary.get('items_with_pods', 0)}")
+    lines.append(f"Total pods analyzed: {summary.get('total_pods_analyzed', 0)}")
+    lines.append(f"Total pod errors: {summary.get('total_pod_errors', 0)}")
+    lines.append("")
 
-    serialized = json.dumps(data_copy, indent=2, default=str)
+    for item in data.get("items", []):
+        lines.append(f"--- Item: {item.get('item_name', '?')} ---")
+        lines.append(f"  ID: {item.get('item_id', '?')}")
+        lines.append(f"  Type: {item.get('item_type', '?')}")
+        lines.append(f"  Status: {item.get('status', 'unknown')}")
+        lines.append(f"  Environment: {item.get('environment', 'N/A')}")
+        lines.append(f"  Velocity error count: {item.get('velocity_error_count', 0)}")
+        lines.append(f"  Pods found: {item.get('pod_count', 0)}")
 
-    if len(serialized) <= max_chars:
-        return serialized
-
-    # Second pass: further reduce error samples
-    for item in data_copy.get("items", data_copy.get("items_with_errors", [])):
-        errors = item.get("errors", item.get("velocity_errors", []))
-        if len(errors) > 5:
-            if "errors" in item:
-                item["errors"] = errors[:5]
-                item["errors_truncated"] = True
-            elif "velocity_errors" in item:
-                item["velocity_errors"] = errors[:5]
-                item["velocity_errors_truncated"] = True
-
+        # ── Pod log details (primary) ──
         for pod in item.get("pods", []):
+            pod_status = pod.get("status", {})
+            lines.append(f"  Pod: {pod.get('pod_name', '?')}")
+            lines.append(f"    Phase: {pod_status.get('phase', '?')}")
+            lines.append(f"    Restarts: {pod_status.get('restart_count', 0)}")
+            lines.append(f"    Node: {pod_status.get('node', '?')}")
+            if pod_status.get("issues"):
+                lines.append(f"    Issues: {'; '.join(pod_status['issues'])}")
+            lines.append(f"    Log lines: {pod.get('log_lines_total', 0)}")
+            lines.append(f"    Error lines: {pod.get('error_lines_count', 0)}")
+
             error_lines = pod.get("error_lines", [])
-            if len(error_lines) > 20:
-                pod["error_lines"] = error_lines[:20]
-                pod["error_lines_truncated"] = True
-            pod.pop("full_logs", None)  # Remove full logs entirely
+            if error_lines:
+                for el in error_lines[:20]:
+                    el_str = str(el).strip()
+                    if len(el_str) > 300:
+                        el_str = el_str[:300] + "..."
+                    lines.append(f"    > {el_str}")
+                if len(error_lines) > 20:
+                    lines.append(f"    > ...+{len(error_lines)-20} more error lines")
 
-    serialized = json.dumps(data_copy, indent=2, default=str)
+            events = pod.get("warning_events", [])
+            if events:
+                for ev in events[:10]:
+                    lines.append(f"    EVENT: {ev.get('reason','?')} (x{ev.get('count',1)}): {ev.get('message','')[:200]}")
 
-    if len(serialized) > max_chars:
-        print(f"  Warning: Data still {len(serialized)} chars after truncation (limit: {max_chars})")
-        serialized = serialized[:max_chars] + "\n...[DATA TRUNCATED]..."
+        # ── Velocity API error context (fallback / supplementary) ──
+        velocity_errors = item.get("velocity_errors", [])
+        if velocity_errors:
+            pod_count = item.get("pod_count", 0)
+            label = "Velocity API errors (primary — no pods found)" if pod_count == 0 else "Velocity API errors (supplementary)"
+            lines.append(f"  {label}:")
+            for e in velocity_errors:
+                count = e.get("count", 1)
+                key = e.get("key", "UNKNOWN")
+                msg = e.get("englishMessage", "").strip()
+                if len(msg) > 300:
+                    msg = msg[:300] + "..."
+                ts_info = ""
+                if e.get("first_timestamp") and e.get("last_timestamp"):
+                    ts_info = f" | first={e['first_timestamp']} last={e['last_timestamp']}"
+                elif e.get("timestamp"):
+                    ts_info = f" | at={e['timestamp']}"
+                args_info = ""
+                if e.get("unique_args"):
+                    args_strs = [str(a) for a in e["unique_args"][:5]]
+                    if len(e["unique_args"]) > 5:
+                        args_strs.append(f"...+{len(e['unique_args'])-5} more")
+                    args_info = f" | args_samples={args_strs}"
+                elif e.get("args"):
+                    args_info = f" | args={e['args']}"
 
-    return serialized
+                lines.append(f"    [{count}x] {key}{ts_info}{args_info}")
+                lines.append(f"      Message: {msg}")
+
+        lines.append("")
+
+    return "\n".join(lines)
 
 
 def build_prompt(
-    velocity_errors: Dict[str, Any],
     pod_logs: Dict[str, Any],
     template: str,
 ) -> tuple[str, str]:
     """Build the system prompt and user prompt for OpenAI.
+
+    The pod-logs data is the sole input.  It contains per-item pod log
+    details (primary) and compact Velocity API error summaries (fallback
+    when no pods are found).
 
     Returns:
         Tuple of (system_prompt, user_prompt)
@@ -145,36 +190,34 @@ def build_prompt(
 Your task is to generate a comprehensive monitoring report from structured log data.
 
 Guidelines:
-- Be precise and factual. Only reference errors/data present in the provided JSON.
+- Be precise and factual. Only reference errors/data present in the provided data.
 - Categorize severity: CRITICAL (crash loops, OOM, service down), HIGH (persistent errors affecting functionality), LOW (warnings, intermittent issues that self-resolve).
 - For each item with errors, provide: root cause analysis, error summary, and actionable recommendations.
+- Use pod log errors as the primary diagnostic source when pods are found.
+- When no pods are found, use the Velocity API errors marked "(primary — no pods found)" as the diagnostic source.
 - Include healthy items as a summary table — do not analyze them individually.
 - Prioritize recommendations from most to least urgent.
 - Use the report template structure provided, filling in all sections.
 - Use markdown formatting with emoji severity indicators: :red_circle: CRITICAL, :orange_circle: HIGH, :yellow_circle: LOW.
 - Keep the executive summary to 2-3 sentences.
+- Error entries with [Nx] indicate the error occurred N times in the window.
 
 The report should be ready to share with the engineering team without additional editing."""
 
-    # Build the data section, respecting size limits
-    half_budget = MAX_DATA_CHARS // 2
-    velocity_json = truncate_data(velocity_errors, half_budget)
-    pod_json = truncate_data(pod_logs, half_budget)
+    # Build compact text summary
+    data_summary = summarize_pod_logs(pod_logs)
+
+    # Safety cap
+    if len(data_summary) > MAX_DATA_CHARS:
+        data_summary = data_summary[:MAX_DATA_CHARS] + "\n...[TRUNCATED]..."
 
     user_prompt = f"""Generate a Velocity Soak Monitoring Report from the following data.
 
 ## Report Template
 {template}
 
-## Velocity API Error Logs
-```json
-{velocity_json}
-```
-
-## Kubernetes Pod Logs
-```json
-{pod_json}
-```
+## Monitoring Data
+{data_summary}
 
 Generate the complete markdown report following the template structure. Include all items with errors, healthy items summary, and prioritized recommendations."""
 
@@ -263,7 +306,6 @@ def call_openai(
 
 
 def generate_report(
-    velocity_errors_path: str,
     pod_logs_path: str,
     config: OpenAIConfig,
     template_path: Optional[str] = None,
@@ -273,8 +315,7 @@ def generate_report(
     """Full report generation pipeline.
 
     Args:
-        velocity_errors_path: Path to velocity_errors JSON file.
-        pod_logs_path: Path to pod_logs JSON file.
+        pod_logs_path: Path to pod_logs JSON file (sole data source).
         config: OpenAI configuration.
         template_path: Optional path to report template.
         output_path: Optional output file path. Auto-generated if None.
@@ -288,28 +329,25 @@ def generate_report(
     print(f"{'='*60}")
 
     # Resolve glob patterns
-    velocity_errors_path = resolve_glob_pattern(velocity_errors_path)
     pod_logs_path = resolve_glob_pattern(pod_logs_path)
 
-    print(f"Velocity errors: {velocity_errors_path}")
     print(f"Pod logs: {pod_logs_path}")
     print(f"OpenAI config: {config.to_dict()}")
     print(f"{'='*60}\n")
 
     # Load data
-    print("Loading data files...")
-    velocity_errors = load_json_file(velocity_errors_path)
+    print("Loading data...")
     pod_logs = load_json_file(pod_logs_path)
     template = load_template(template_path)
 
-    print(f"  Velocity errors: {velocity_errors.get('summary', {}).get('total_items_with_errors', '?')} items, "
-          f"{velocity_errors.get('summary', {}).get('total_error_count', '?')} errors")
-    print(f"  Pod logs: {pod_logs.get('summary', {}).get('items_processed', '?')} items, "
-          f"{pod_logs.get('summary', {}).get('total_pod_errors', '?')} pod errors")
+    summary = pod_logs.get('summary', {})
+    print(f"  Items processed: {summary.get('items_processed', '?')}")
+    print(f"  Items with pods: {summary.get('items_with_pods', '?')}")
+    print(f"  Total pod errors: {summary.get('total_pod_errors', '?')}")
 
     # Build prompt
     print("\nBuilding prompt...")
-    system_prompt, user_prompt = build_prompt(velocity_errors, pod_logs, template)
+    system_prompt, user_prompt = build_prompt(pod_logs, template)
     print(f"  System prompt: {len(system_prompt):,} chars")
     print(f"  User prompt: {len(user_prompt):,} chars")
 
@@ -356,16 +394,12 @@ def main():
         description="Generate soak monitoring report using OpenAI API"
     )
     parser.add_argument(
-        "--velocity-errors",
-        required=True,
-        help="Path to velocity_errors JSON file (supports glob patterns)",
-    )
-    parser.add_argument(
         "--pod-logs",
         required=True,
         help="Path to pod_logs JSON file (supports glob patterns)",
     )
     parser.add_argument(
+
         "--config",
         help="Path to environments.yaml (for OpenAI settings)",
     )
@@ -412,7 +446,6 @@ def main():
 
     # Generate report
     output_path = generate_report(
-        velocity_errors_path=args.velocity_errors,
         pod_logs_path=args.pod_logs,
         config=config,
         template_path=args.template,

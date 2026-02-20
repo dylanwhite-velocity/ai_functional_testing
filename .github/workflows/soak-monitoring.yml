@@ -1,31 +1,31 @@
 # Soak Monitoring Workflow
 # Runs the full soak monitoring pipeline on a schedule:
-#   1. Fetch Velocity item logs (API)             — needs Secrets Manager (account A)
-#   2. Fetch Kubernetes pod logs (kubectl)         — needs EKS access   (account B)
-#   3. Generate summary report (Azure OpenAI)     — needs Secrets Manager (account A)
+#   1. Fetch Velocity item logs (API)             — needs Secrets Manager
+#   2. Fetch Kubernetes pod logs (kubectl)         — needs EKS access (eks-readonly role)
+#   3. Generate summary report (Azure OpenAI)     — needs Secrets Manager
 #   4. Upload report as GitHub Actions artifact
 #
-# Cross-account setup:
-#   Secrets Manager lives in the default AWS account (AWS_ACCESS_KEY_ID).
-#   EKS clusters live in a separate account; the QA creds assume an eks-admin role.
-#   The workflow switches credentials between steps accordingly.
+# AWS setup:
+#   Secrets Manager uses the dwhite-cli IAM user (AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY)
+#   in account 591949011095.
+#   EKS access uses a separate IAM user (AWS_EKS_ACCESS_KEY_ID / AWS_EKS_SECRET_ACCESS_KEY)
+#   in the EKS account (199613768778) with direct cluster access.
+#   Kubeconfig is generated dynamically via `aws eks update-kubeconfig`.
 #
 # Trigger: Daily cron schedule + manual dispatch
 #
 # Required GitHub Secrets:
-#   AWS_ACCESS_KEY_ID          - IAM key for Secrets Manager (account 591949011095)
-#   AWS_SECRET_ACCESS_KEY      - IAM secret for Secrets Manager
-#   AWS_EKS_ACCESS_KEY_ID      - IAM key for EKS account (199613768778)
-#   AWS_EKS_SECRET_ACCESS_KEY  - IAM secret for EKS account
-#   AWS_EKS_ROLE_ARN           - Role to assume for EKS (arn:aws:iam::199613768778:role/eks-admin)
-#   KUBECONFIG_BASE64          - Base64-encoded kubeconfig (qa-* contexts, no AWS_PROFILE)
+#   AWS_ACCESS_KEY_ID          - IAM access key for Secrets Manager (account 591949011095)
+#   AWS_SECRET_ACCESS_KEY      - IAM secret key for Secrets Manager
+#   AWS_EKS_ACCESS_KEY_ID      - IAM access key for EKS (authorized to assume eks-readonly)
+#   AWS_EKS_SECRET_ACCESS_KEY  - IAM secret key for EKS
 
 name: Soak Monitoring
 
 on:
-  # Every 8 hours (7 AM, 3 PM, 11 PM UTC / 12 AM, 8 AM, 4 PM MST)
+  # Weekdays at 3 PM UTC / 8 AM MST
   schedule:
-    - cron: '0 7,15,23 * * *'
+    - cron: '0 15 * * 1-5'
 
   # Manual trigger with optional overrides
   workflow_dispatch:
@@ -82,14 +82,18 @@ jobs:
           version: 'v1.31.3'
 
       # ─────────────────────────────────────────────────────
-      # Step 1: Fetch Velocity item logs (Secrets Manager)
+      # AWS Credentials (single identity for all steps)
       # ─────────────────────────────────────────────────────
-      - name: Configure AWS – Secrets Manager
+      - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
+
+      # ─────────────────────────────────────────────────────
+      # Step 1: Fetch Velocity item logs (Secrets Manager)
+      # ─────────────────────────────────────────────────────
 
       - name: 'Step 1: Fetch Velocity item logs'
         working-directory: soak-monitoring-logs
@@ -130,25 +134,57 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_EKS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_EKS_SECRET_ACCESS_KEY }}
-          role-to-assume: ${{ secrets.AWS_EKS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Configure kubeconfig
         if: steps.velocity.outputs.errors != '0'
         run: |
-          mkdir -p ~/.kube
-          echo "${{ secrets.KUBECONFIG_BASE64 }}" | base64 -d > ~/.kube/config
-          chmod 600 ~/.kube/config
+          # Extract EKS cluster mappings (cluster_name, context alias, role_arn) from environments.yaml
+          python3 << 'PYSCRIPT' > /tmp/eks_clusters.txt
+          import yaml
+          with open('soak-monitoring-logs/environments.yaml') as f:
+              config = yaml.safe_load(f)
+          seen = set()
+          for inst in config.get('instances', []):
+              name = inst.get('name')
+              cluster = inst.get('cluster_name', name)
+              role_arn = inst.get('role_arn', '')
+              key = f"{cluster}:{name}"
+              if name and key not in seen:
+                  seen.add(key)
+                  print(f"{cluster} {name} {role_arn}")
+          PYSCRIPT
+
+          echo "Cluster mappings:"
+          cat /tmp/eks_clusters.txt
+
+          while read -r CLUSTER ALIAS ROLE_ARN; do
+            echo "--- Updating kubeconfig: cluster=$CLUSTER alias=$ALIAS role=$ROLE_ARN"
+            CMD="aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name $CLUSTER --alias $ALIAS"
+            if [[ -n "$ROLE_ARN" ]]; then
+              CMD="$CMD --role-arn $ROLE_ARN"
+            fi
+            eval $CMD
+          done < /tmp/eks_clusters.txt
+
           echo "Available contexts:"
           kubectl config get-contexts -o name
 
       - name: Verify cluster access
         if: steps.velocity.outputs.errors != '0'
         run: |
+          FAILED=0
           for ctx in $(kubectl config get-contexts -o name); do
             echo "Testing context: $ctx"
-            kubectl --context "$ctx" cluster-info --request-timeout=10s 2>&1 | head -2 || echo "  WARNING: Cannot reach $ctx"
+            if ! kubectl --context "$ctx" cluster-info --request-timeout=10s 2>&1 | head -2; then
+              echo "::error::Cannot authenticate to cluster context: $ctx"
+              FAILED=1
+            fi
           done
+          if [[ $FAILED -ne 0 ]]; then
+            echo "::error::One or more cluster contexts failed authentication. Check IAM role_arn in environments.yaml."
+            exit 1
+          fi
 
       - name: 'Step 2: Fetch Kubernetes pod logs'
         if: steps.velocity.outputs.errors != '0'
@@ -193,7 +229,6 @@ jobs:
         working-directory: soak-monitoring-logs
         run: |
           CMD="python src/generate_report.py"
-          CMD="$CMD --velocity-errors ${{ steps.velocity.outputs.file }}"
           CMD="$CMD --pod-logs ${{ steps.podlogs.outputs.file }}"
           CMD="$CMD --config environments.yaml"
           if [[ "${{ inputs.dry_run }}" == "true" ]]; then

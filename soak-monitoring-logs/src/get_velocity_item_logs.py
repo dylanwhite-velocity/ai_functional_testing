@@ -182,6 +182,91 @@ def filter_error_logs(logs: List[Dict], levels: List[str] = None) -> List[Dict]:
     return error_logs
 
 
+# Fields that are redundant (already on parent or always empty/constant)
+_STRIP_FIELDS = {"fullLog", "itemId", "orgId", "componentType", "componentName",
+                 "componentLabel", "userId", "timestampEpoch"}
+
+
+def compact_errors(errors: List[Dict]) -> List[Dict]:
+    """Compact error list by deduplicating, stripping, and grouping.
+
+    Optimizations applied:
+    1. Deduplicate user/admin access pairs (same error logged twice)
+    2. Drop fullLog (stringified duplicate of parsed fields)
+    3. Strip redundant per-error fields (itemId, orgId, etc.)
+    4. Group errors by key — collapse identical error types into one
+       entry with a count and list of unique args/trackIds.
+    """
+    if not errors:
+        return errors
+
+    # Step 1: Deduplicate user/admin pairs.
+    # Build a signature from (key, timestamp_second, englishMessage) and keep
+    # only the first occurrence.
+    seen_sigs = set()
+    deduped = []
+    for e in errors:
+        sig = (
+            e.get("key", ""),
+            e.get("timestamp", "")[:19],  # second-level precision
+            e.get("englishMessage", ""),
+        )
+        if sig in seen_sigs:
+            continue
+        seen_sigs.add(sig)
+        deduped.append(e)
+
+    # Step 2 & 3: Strip redundant fields.
+    cleaned = []
+    for e in deduped:
+        clean = {k: v for k, v in e.items()
+                 if k not in _STRIP_FIELDS and v not in ("", None, [], {})}
+        cleaned.append(clean)
+
+    # Step 4: Group by error key.
+    from collections import OrderedDict
+    groups: OrderedDict[str, Dict] = OrderedDict()
+    for e in cleaned:
+        key = e.get("key", "UNKNOWN")
+        if key not in groups:
+            groups[key] = {
+                "key": key,
+                "level": e.get("level", "error"),
+                "className": e.get("className", ""),
+                "englishMessage": e.get("englishMessage", ""),
+                "count": 0,
+                "unique_args": [],
+                "first_timestamp": e.get("timestamp"),
+                "last_timestamp": e.get("timestamp"),
+            }
+        g = groups[key]
+        g["count"] += 1
+        g["last_timestamp"] = e.get("timestamp", g["last_timestamp"])
+        # Collect unique args (e.g. different trackIds)
+        args = e.get("args")
+        if args and args not in g["unique_args"]:
+            # Keep at most 10 unique arg sets per group
+            if len(g["unique_args"]) < 10:
+                g["unique_args"].append(args)
+
+    # Clean up: drop className if empty, drop unique_args if only one
+    result = []
+    for g in groups.values():
+        if not g.get("className"):
+            g.pop("className", None)
+        if len(g["unique_args"]) <= 1:
+            # Inline the single args value
+            if g["unique_args"]:
+                g["args"] = g["unique_args"][0]
+            g.pop("unique_args")
+        if g["first_timestamp"] == g["last_timestamp"]:
+            g["timestamp"] = g.pop("first_timestamp")
+            g.pop("last_timestamp")
+        result.append(g)
+
+    return result
+
+
 async def fetch_item_logs(client: VelocityLogClient, items: List[Dict], 
                           item_type: str, start_time: int, end_time: int,
                           environment_info: Optional[Dict] = None) -> List[Dict]:
@@ -203,18 +288,15 @@ async def fetch_item_logs(client: VelocityLogClient, items: List[Dict],
             error_logs = filter_error_logs(logs)
             
             if error_logs:
+                compacted = compact_errors(error_logs[:50])
                 item_data = {
                     "item_id": item_id,
                     "item_name": item_name,
                     "item_type": item_type,
                     "status": item.get("status", item.get("state", "unknown")),
                     "error_count": len(error_logs),
-                    "errors": error_logs[:50],
-                    "raw_item": {
-                        "id": item_id,
-                        "name": item_name,
-                        "type": item_type
-                    }
+                    "unique_error_count": sum(e.get("count", 1) for e in compacted),
+                    "errors": compacted,
                 }
                 # Tag with environment info for multi-env mode
                 if environment_info:

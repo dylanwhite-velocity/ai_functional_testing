@@ -84,21 +84,6 @@ jobs:
       # ─────────────────────────────────────────────────────
       # AWS Credentials (single identity for all steps)
       # ─────────────────────────────────────────────────────
-      - name: Debug AWS credentials
-        run: |
-          KEY_ID="${{ secrets.AWS_ACCESS_KEY_ID }}"
-          SECRET="${{ secrets.AWS_SECRET_ACCESS_KEY }}"
-          echo "Access Key ID length: ${#KEY_ID}"
-          echo "Access Key ID prefix: ${KEY_ID:0:4}..."
-          echo "Secret Key length: ${#SECRET}"
-          # Validate format
-          if [[ ! "$KEY_ID" =~ ^AKIA[A-Z0-9]{16}$ ]]; then
-            echo "::warning::Access Key ID does not match expected format (AKIA + 16 alphanumeric chars)"
-          fi
-          if [[ ${#SECRET} -ne 40 ]]; then
-            echo "::warning::Secret Access Key length is ${#SECRET}, expected 40"
-          fi
-
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -231,7 +216,6 @@ jobs:
         working-directory: soak-monitoring-logs
         run: |
           CMD="python src/generate_report.py"
-          CMD="$CMD --velocity-errors ${{ steps.velocity.outputs.file }}"
           CMD="$CMD --pod-logs ${{ steps.podlogs.outputs.file }}"
           CMD="$CMD --config environments.yaml"
           if [[ "${{ inputs.dry_run }}" == "true" ]]; then

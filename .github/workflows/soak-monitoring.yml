@@ -23,9 +23,9 @@
 name: Soak Monitoring
 
 on:
-  # Every 8 hours (7 AM, 3 PM, 11 PM UTC / 12 AM, 8 AM, 4 PM MST)
+  # Weekdays at 3 PM UTC / 8 AM MST
   schedule:
-    - cron: '0 7,15,23 * * *'
+    - cron: '0 15 * * 1-5'
 
   # Manual trigger with optional overrides
   workflow_dispatch:

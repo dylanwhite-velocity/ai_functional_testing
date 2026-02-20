@@ -9,7 +9,7 @@
 #   Secrets Manager uses the dwhite-cli IAM user (AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY)
 #   in account 591949011095.
 #   EKS access uses a separate IAM user (AWS_EKS_ACCESS_KEY_ID / AWS_EKS_SECRET_ACCESS_KEY)
-#   that assumes the eks-admin role in the EKS account (199613768778).
+#   in the EKS account (199613768778) with direct cluster access.
 #   Kubeconfig is generated dynamically via `aws eks update-kubeconfig`.
 #
 # Trigger: Daily cron schedule + manual dispatch
@@ -143,15 +143,12 @@ jobs:
       # ─────────────────────────────────────────────────────
       # Step 2: Fetch Kubernetes pod logs (EKS)
       # ─────────────────────────────────────────────────────
-      - name: Configure AWS – EKS (assume eks-admin role)
+      - name: Configure AWS – EKS
         if: steps.velocity.outputs.errors != '0'
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_EKS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_EKS_SECRET_ACCESS_KEY }}
-          role-to-assume: arn:aws:iam::199613768778:role/eks-admin
-          role-session-name: soak-monitoring-eks
-          role-skip-session-tagging: true
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Configure kubeconfig

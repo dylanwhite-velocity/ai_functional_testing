@@ -1,24 +1,21 @@
 # Soak Monitoring Workflow
 # Runs the full soak monitoring pipeline on a schedule:
-#   1. Fetch Velocity item logs (API)             — needs Secrets Manager (account A)
-#   2. Fetch Kubernetes pod logs (kubectl)         — needs EKS access   (account B)
-#   3. Generate summary report (Azure OpenAI)     — needs Secrets Manager (account A)
+#   1. Fetch Velocity item logs (API)             — needs Secrets Manager
+#   2. Fetch Kubernetes pod logs (kubectl)         — needs EKS access (eks-admin role)
+#   3. Generate summary report (Azure OpenAI)     — needs Secrets Manager
 #   4. Upload report as GitHub Actions artifact
 #
-# Cross-account setup:
-#   Secrets Manager lives in the default AWS account (AWS_ACCESS_KEY_ID).
-#   EKS clusters live in a separate account; the QA creds assume an eks-admin role.
-#   The workflow switches credentials between steps accordingly.
+# AWS setup:
+#   A single IAM user (AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY) provides
+#   access to both Secrets Manager and EKS by assuming the eks-admin role
+#   in account 591949011095.
+#   Kubeconfig is generated dynamically via `aws eks update-kubeconfig`.
 #
 # Trigger: Daily cron schedule + manual dispatch
 #
 # Required GitHub Secrets:
-#   AWS_ACCESS_KEY_ID          - IAM key for Secrets Manager (account 591949011095)
-#   AWS_SECRET_ACCESS_KEY      - IAM secret for Secrets Manager
-#   AWS_EKS_ACCESS_KEY_ID      - IAM key for EKS account (199613768778)
-#   AWS_EKS_SECRET_ACCESS_KEY  - IAM secret for EKS account
-#   AWS_EKS_ROLE_ARN           - Role to assume for EKS (arn:aws:iam::199613768778:role/eks-admin)
-#   KUBECONFIG_BASE64          - Base64-encoded kubeconfig (qa-* contexts, no AWS_PROFILE)
+#   AWS_ACCESS_KEY_ID          - IAM access key (account 591949011095)
+#   AWS_SECRET_ACCESS_KEY      - IAM secret key
 
 name: Soak Monitoring
 
@@ -82,14 +79,18 @@ jobs:
           version: 'v1.31.3'
 
       # ─────────────────────────────────────────────────────
-      # Step 1: Fetch Velocity item logs (Secrets Manager)
+      # AWS Credentials (single identity for all steps)
       # ─────────────────────────────────────────────────────
-      - name: Configure AWS – Secrets Manager
+      - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
+
+      # ─────────────────────────────────────────────────────
+      # Step 1: Fetch Velocity item logs (Secrets Manager)
+      # ─────────────────────────────────────────────────────
 
       - name: 'Step 1: Fetch Velocity item logs'
         working-directory: soak-monitoring-logs
@@ -124,40 +125,38 @@ jobs:
       # ─────────────────────────────────────────────────────
       # Step 2: Fetch Kubernetes pod logs (EKS)
       # ─────────────────────────────────────────────────────
-      - name: Verify EKS secrets are set
-        if: steps.velocity.outputs.errors != '0'
-        run: |
-          if [[ -z "${{ secrets.AWS_EKS_ACCESS_KEY_ID }}" ]]; then
-            echo "::error::AWS_EKS_ACCESS_KEY_ID secret is not set"
-            exit 1
-          fi
-          if [[ -z "${{ secrets.AWS_EKS_SECRET_ACCESS_KEY }}" ]]; then
-            echo "::error::AWS_EKS_SECRET_ACCESS_KEY secret is not set"
-            exit 1
-          fi
-          if [[ -z "${{ secrets.AWS_EKS_ROLE_ARN }}" ]]; then
-            echo "::error::AWS_EKS_ROLE_ARN secret is not set"
-            exit 1
-          fi
-          echo "All EKS secrets are configured"
-
-      - name: Configure AWS – EKS
+      - name: Configure AWS – EKS (assume eks-admin role)
         if: steps.velocity.outputs.errors != '0'
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_EKS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_EKS_SECRET_ACCESS_KEY }}
-          role-to-assume: ${{ secrets.AWS_EKS_ROLE_ARN }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          role-to-assume: arn:aws:iam::591949011095:role/eks-admin
           role-session-name: soak-monitoring-eks
           aws-region: ${{ env.AWS_REGION }}
-          unset-current-credentials: true
 
       - name: Configure kubeconfig
         if: steps.velocity.outputs.errors != '0'
         run: |
-          mkdir -p ~/.kube
-          echo "${{ secrets.KUBECONFIG_BASE64 }}" | base64 -d > ~/.kube/config
-          chmod 600 ~/.kube/config
+          # Extract unique EKS cluster names from environments.yaml
+          CLUSTERS=$(python3 << 'PYSCRIPT'
+          import yaml
+          with open('soak-monitoring-logs/environments.yaml') as f:
+              config = yaml.safe_load(f)
+          names = set()
+          for inst in config.get('instances', []):
+              name = inst.get('name')
+              if name:
+                  names.add(name)
+          for n in sorted(names):
+              print(n)
+          PYSCRIPT
+          )
+          echo "Configuring kubeconfig for clusters: $CLUSTERS"
+          for CLUSTER in $CLUSTERS; do
+            echo "--- Updating kubeconfig for: $CLUSTER"
+            aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name "$CLUSTER" --alias "$CLUSTER"
+          done
           echo "Available contexts:"
           kubectl config get-contexts -o name
 

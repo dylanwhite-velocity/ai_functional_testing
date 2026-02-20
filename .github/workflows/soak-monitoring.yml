@@ -7,8 +7,8 @@
 #
 # AWS setup:
 #   A single IAM user (AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY) provides
-#   access to both Secrets Manager and EKS by assuming the eks-admin role
-#   in account 591949011095.
+#   access to Secrets Manager (account 591949011095) and EKS by assuming
+#   the eks-admin role in the EKS account (199613768778).
 #   Kubeconfig is generated dynamically via `aws eks update-kubeconfig`.
 #
 # Trigger: Daily cron schedule + manual dispatch
@@ -146,32 +146,36 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          role-to-assume: arn:aws:iam::591949011095:role/eks-admin
+          role-to-assume: arn:aws:iam::199613768778:role/eks-admin
           role-session-name: soak-monitoring-eks
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Configure kubeconfig
         if: steps.velocity.outputs.errors != '0'
         run: |
-          # Extract unique EKS cluster names from environments.yaml
-          CLUSTERS=$(python3 << 'PYSCRIPT'
+          # Extract EKS cluster mappings (cluster_name -> context alias) from environments.yaml
+          python3 << 'PYSCRIPT' > /tmp/eks_clusters.txt
           import yaml
           with open('soak-monitoring-logs/environments.yaml') as f:
               config = yaml.safe_load(f)
-          names = set()
+          seen = set()
           for inst in config.get('instances', []):
               name = inst.get('name')
-              if name:
-                  names.add(name)
-          for n in sorted(names):
-              print(n)
+              cluster = inst.get('cluster_name', name)
+              key = f"{cluster}:{name}"
+              if name and key not in seen:
+                  seen.add(key)
+                  print(f"{cluster} {name}")
           PYSCRIPT
-          )
-          echo "Configuring kubeconfig for clusters: $CLUSTERS"
-          for CLUSTER in $CLUSTERS; do
-            echo "--- Updating kubeconfig for: $CLUSTER"
-            aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name "$CLUSTER" --alias "$CLUSTER"
-          done
+
+          echo "Cluster mappings:"
+          cat /tmp/eks_clusters.txt
+
+          while read -r CLUSTER ALIAS; do
+            echo "--- Updating kubeconfig: cluster=$CLUSTER alias=$ALIAS"
+            aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name "$CLUSTER" --alias "$ALIAS"
+          done < /tmp/eks_clusters.txt
+
           echo "Available contexts:"
           kubectl config get-contexts -o name
 

@@ -19,26 +19,34 @@ openai:
   azure_api_version: "2024-10-21"
   azure_deployment: gpt-5
 
+# EKS cluster mapping:
+#   name         = kubectl context alias (used by pod log fetcher)
+#   cluster_name = actual EKS cluster name (used by aws eks update-kubeconfig)
+#   Namespace    = velocity-{organizationId}-services
+#
+# EKS clusters live in account 199613768778 (separate from Secrets Manager).
+
 instances:
   - name: qa-advanced
+    cluster_name: qaus1-advanced
     organizationId: rzbirc1krb814pev
     usernames:
       - neo_admin_soak_dog
 
   # - name: qa-advanced
+  #   cluster_name: qaus1-advanced
   #   organizationId: nc7yvw8shwjniihe
   #   usernames:
   #     - neo_admin_soak_cat
 
   # - name: qa-advanced
+  #   cluster_name: qaus1-advanced
   #   organizationId: noxnhdppsju1jrte
   #   usernames:
   #     - soak_neo_admin_uber_item
 
   # - name: qa-dedicated
+  #   cluster_name: qaus1-dedicated
   #   organizationId: 8q6rrqvpilhwr3sc
   #   usernames:
   #     - neo_soak_solutions_admin
-
-# Kubernetes namespace pattern: velocity-{organizationId}-services
-# Kubernetes context typically matches the instance name

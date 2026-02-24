@@ -226,6 +226,7 @@ def summarize_pod_logs(data: Dict[str, Any]) -> str:
 def build_prompt(
     pod_logs: Dict[str, Any],
     template: str,
+    model_name: str = "unknown",
 ) -> tuple[str, str]:
     """Build the system prompt and user prompt for OpenAI.
 
@@ -246,6 +247,8 @@ def build_prompt(
         data_summary = data_summary[:MAX_DATA_CHARS] + "\n...[TRUNCATED]..."
 
     user_prompt = f"""Generate a Velocity Soak Monitoring Report from the following data.
+
+Report generated using model: {model_name}
 
 ## Report Template
 {template}
@@ -381,7 +384,7 @@ def generate_report(
 
     # Build prompt
     print("\nBuilding prompt...")
-    system_prompt, user_prompt = build_prompt(pod_logs, template)
+    system_prompt, user_prompt = build_prompt(pod_logs, template, model_name=config.model)
     print(f"  System prompt: {len(system_prompt):,} chars")
     print(f"  User prompt: {len(user_prompt):,} chars")
 

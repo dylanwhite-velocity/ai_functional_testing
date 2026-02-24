@@ -36,7 +36,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 # Defaults
 HOURS_BACK = 24
-LOG_LEVELS = ["ERROR", "WARN"]
+LOG_LEVEL = "WARN"
+LOG_PAGE_SIZE = 500
 
 
 class VelocityLogClient:
@@ -109,15 +110,30 @@ class VelocityLogClient:
         return await self._request("GET", "/iot/analytics/bigdata")
     
     async def get_item_logs(self, item_id: str, start_time: int, end_time: int, 
-                            levels: List[str] = None) -> Dict:
-        """Get logs for a specific item."""
+                            level: str = None, page_size: int = LOG_PAGE_SIZE) -> Dict:
+        """Get logs for a specific item.
+        
+        Args:
+            item_id: The Velocity item ID.
+            start_time: Start time in epoch milliseconds.
+            end_time: End time in epoch milliseconds.
+            level: Minimum log level (e.g. 'WARN'). With includeHigherLevels=True,
+                   'WARN' returns both WARN and ERROR entries.
+            page_size: Number of log entries to return (default: LOG_PAGE_SIZE).
+        """
         query_params = {
             "startTime": start_time,
+            "startTimeEquals": True,
             "endTime": end_time,
-            "limit": 500
+            "endTimeEquals": True,
+            "sortOrder": "desc",
+            "from": 0,
+            "size": page_size,
         }
-        if levels:
-            query_params["levels"] = levels
+        if level:
+            query_params["level"] = level
+            query_params["includeHigherLevels"] = True
+            query_params["levelQueryOption"] = "term"
         
         return await self._request("POST", f"/iot/logs/{item_id}", json=query_params)
 
@@ -170,9 +186,13 @@ def parse_log_entries(logs_response: Dict) -> List[Dict]:
 
 
 def filter_error_logs(logs: List[Dict], levels: List[str] = None) -> List[Dict]:
-    """Filter logs for error-level entries."""
+    """Filter logs for error-level entries.
+    
+    This is a client-side safety net. The API should already filter by level
+    when 'level' + 'includeHigherLevels' are set in the request body.
+    """
     if not levels:
-        levels = LOG_LEVELS
+        levels = ["ERROR", "WARN"]
     
     error_logs = []
     for log in logs:
@@ -283,7 +303,7 @@ async def fetch_item_logs(client: VelocityLogClient, items: List[Dict],
         print(f"  Checking {item_type}: {item_name} ({item_id})...")
         
         try:
-            logs_response = await client.get_item_logs(item_id, start_time, end_time, LOG_LEVELS)
+            logs_response = await client.get_item_logs(item_id, start_time, end_time, LOG_LEVEL)
             logs = parse_log_entries(logs_response)
             error_logs = filter_error_logs(logs)
             
@@ -329,7 +349,7 @@ async def main(credentials: Dict[str, str], item_type: Optional[str], hours_back
     print(f"Base URL: {credentials['base_url']}")
     print(f"Distribution: {credentials['distribution']}")
     print(f"Time Range: Last {hours_back} hours")
-    print(f"Log Levels: {', '.join(LOG_LEVELS)}")
+    print(f"Log Level: {LOG_LEVEL} (includeHigherLevels=True)")
     print(f"Item Types: {item_type or 'all'}")
     print(f"{'='*60}\n")
     

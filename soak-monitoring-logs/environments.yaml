@@ -3,8 +3,8 @@
 
 # Log fetch settings
 settings:
-  velocity_hours: 8    # Hours to look back for Velocity API logs
-  pod_hours: 8          # Hours to look back for K8s pod logs
+  velocity_hours: 24    # Hours to look back for Velocity API logs
+  pod_hours: 24          # Hours to look back for K8s pod logs
 
 # OpenAI settings for report generation
 openai:
@@ -19,39 +19,28 @@ openai:
   azure_api_version: "2024-10-21"
   azure_deployment: gpt-5
 
-# EKS cluster mapping:
-#   name         = kubectl context alias (used by pod log fetcher)
-#   cluster_name = actual EKS cluster name (used by aws eks update-kubeconfig)
-#   role_arn     = IAM role to assume for cluster access (used by aws eks get-token)
-#   Namespace    = velocity-{organizationId}-services
-#
-# EKS clusters live in account 199613768778 (separate from Secrets Manager).
-
+# Soak Monitoring instances
 instances:
   - name: qa-advanced
     cluster_name: qaus1-advanced
-    role_arn: "arn:aws:iam::199613768778:role/eks-readonly"
     organizationId: rzbirc1krb814pev
     usernames:
       - neo_admin_soak_dog
 
   - name: qa-advanced
     cluster_name: qaus1-advanced
-    role_arn: "arn:aws:iam::199613768778:role/eks-readonly"
     organizationId: nc7yvw8shwjniihe
     usernames:
       - neo_admin_soak_cat
 
   - name: qa-advanced
     cluster_name: qaus1-advanced
-    role_arn: "arn:aws:iam::199613768778:role/eks-readonly"
     organizationId: noxnhdppsju1jrte
     usernames:
       - soak_neo_admin_uber_item
 
   - name: qa-dedicated
     cluster_name: qaus1-dedicated
-    role_arn: "arn:aws:iam::199613768778:role/eks-readonly"
     organizationId: 8q6rrqvpilhwr3sc
     usernames:
       - neo_soak_solutions_admin

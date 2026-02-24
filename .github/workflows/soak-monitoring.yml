@@ -139,7 +139,7 @@ jobs:
       - name: Configure kubeconfig
         if: steps.velocity.outputs.errors != '0'
         run: |
-          # Extract EKS cluster mappings (cluster_name, context alias, role_arn) from environments.yaml
+          # Extract unique EKS cluster mappings (cluster_name, context alias) from environments.yaml
           python3 << 'PYSCRIPT' > /tmp/eks_clusters.txt
           import yaml
           with open('soak-monitoring-logs/environments.yaml') as f:
@@ -148,23 +148,24 @@ jobs:
           for inst in config.get('instances', []):
               name = inst.get('name')
               cluster = inst.get('cluster_name', name)
-              role_arn = inst.get('role_arn', '')
               key = f"{cluster}:{name}"
               if name and key not in seen:
                   seen.add(key)
-                  print(f"{cluster} {name} {role_arn}")
+                  print(f"{cluster} {name}")
           PYSCRIPT
 
           echo "Cluster mappings:"
           cat /tmp/eks_clusters.txt
 
-          while read -r CLUSTER ALIAS ROLE_ARN; do
-            echo "--- Updating kubeconfig: cluster=$CLUSTER alias=$ALIAS role=$ROLE_ARN"
-            CMD="aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name $CLUSTER --alias $ALIAS"
-            if [[ -n "$ROLE_ARN" ]]; then
-              CMD="$CMD --role-arn $ROLE_ARN"
-            fi
-            eval $CMD
+          EKS_ROLE_ARN="arn:aws:iam::199613768778:role/eks-readonly"
+
+          while read -r CLUSTER ALIAS; do
+            echo "--- Updating kubeconfig: cluster=$CLUSTER alias=$ALIAS"
+            aws eks update-kubeconfig \
+              --region ${{ env.AWS_REGION }} \
+              --name "$CLUSTER" \
+              --alias "$ALIAS" \
+              --role-arn "$EKS_ROLE_ARN"
           done < /tmp/eks_clusters.txt
 
           echo "Available contexts:"
@@ -182,7 +183,7 @@ jobs:
             fi
           done
           if [[ $FAILED -ne 0 ]]; then
-            echo "::error::One or more cluster contexts failed authentication. Check IAM role_arn in environments.yaml."
+            echo "::error::One or more cluster contexts failed authentication. Check EKS_ROLE_ARN in the workflow."
             exit 1
           fi
 

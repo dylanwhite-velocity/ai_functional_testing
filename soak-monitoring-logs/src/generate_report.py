@@ -139,12 +139,26 @@ def summarize_pod_logs(data: Dict[str, Any]) -> str:
     lines.append(f"Total pod errors: {summary.get('total_pod_errors', 0)}")
     lines.append("")
 
+    # Environment metadata for report header
+    env_metadata = data.get("environments", [])
+    if env_metadata:
+        lines.append("=== Environments Monitored ===")
+        for env in env_metadata:
+            lines.append(f"  Instance: {env.get('sut_name', 'N/A')}")
+            lines.append(f"    Org ID: {env.get('organization_id', 'N/A')}")
+            lines.append(f"    Username: {env.get('username', 'N/A')}")
+            lines.append(f"    Base URL: {env.get('base_url', 'N/A')}")
+            lines.append(f"    Items with errors: {env.get('items_with_errors', 0)}")
+            lines.append(f"    Total errors: {env.get('total_errors', 0)}")
+        lines.append("")
+
     for item in data.get("items", []):
         lines.append(f"--- Item: {item.get('item_name', '?')} ---")
         lines.append(f"  ID: {item.get('item_id', '?')}")
         lines.append(f"  Type: {item.get('item_type', '?')}")
         lines.append(f"  Status: {item.get('status', 'unknown')}")
         lines.append(f"  Environment: {item.get('environment', 'N/A')}")
+        lines.append(f"  Org ID: {item.get('organization_id', 'N/A')}")
         lines.append(f"  Velocity error count: {item.get('velocity_error_count', 0)}")
         lines.append(f"  Pods found: {item.get('pod_count', 0)}")
 
@@ -239,7 +253,7 @@ def build_prompt(
 ## Monitoring Data
 {data_summary}
 
-Generate the complete markdown report following the template structure. Include all items with errors, healthy items summary, and prioritized recommendations."""
+Generate the complete markdown report following the template structure. Include all items with errors grouped by environment, and prioritized recommendations."""
 
     return system_prompt, user_prompt
 

@@ -32,10 +32,15 @@
 # Velocity Soak Monitoring Report
 
 **Date:** {{date}}  
-**Environment:** {{sut_name}}  
-**Cluster:** {{cluster}}  
-**Namespace:** {{namespace}}  
 **Time Range:** {{time_range}}
+
+### Environments Monitored
+
+| Instance | Org ID | Username |
+|----------|--------|----------|
+{{#each environments}}
+| {{sut_name}} | {{organization_id}} | {{username}} |
+{{/each}}
 
 ---
 
@@ -60,8 +65,13 @@
 
 ## Items Requiring Attention
 
+_Items are grouped by environment (instance / org ID / username)._
+
+{{#each environments_with_errors}}
+### Environment: {{sut_name}} / {{organization_id}} / {{username}}
+
 {{#each items}}
-### {{item_name}} ({{item_type}})
+#### {{item_name}} ({{item_type}})
 
 | Property | Value |
 |----------|-------|
@@ -75,7 +85,7 @@
 **Error Summary:**
 {{error_summary}}
 
-**Sample Errors:**
+**Sample Errors (with timestamps):**
 ```
 {{#each errors limit=5}}
 {{this}}
@@ -87,12 +97,7 @@
 
 ---
 {{/each}}
-
-## Healthy Items
-
-{{healthy_items_summary}}
-
----
+{{/each}}
 
 ## Recommendations
 

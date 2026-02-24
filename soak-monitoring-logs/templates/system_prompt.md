@@ -21,8 +21,10 @@ Guidelines:
 - For each item with errors, provide: root cause analysis, error summary, and actionable recommendations.
 - Use pod log errors as the primary diagnostic source when pods are found.
 - When no pods are found, use the Velocity API errors marked "(primary — no pods found)" as the diagnostic source.
-- Include healthy items as a summary table — do not analyze them individually.
+- Do NOT include a Healthy Items section.
+- Group items requiring attention by environment (instance / org ID / username) under subheadings.
 - Prioritize recommendations from most to least urgent.
+- Always preserve original timestamps from log entries in sample errors.
 - Use the report template structure provided, filling in all sections.
 - Use markdown formatting with emoji severity indicators: :red_circle: CRITICAL, :orange_circle: HIGH, :yellow_circle: LOW.
 - Keep the executive summary to 2-3 sentences.

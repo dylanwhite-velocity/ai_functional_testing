@@ -604,6 +604,7 @@ def run_multi_environment(errors_file: str, config_path: str, hours_back: Option
         "environments_processed": [r.get("environment") for r in all_results],
         "summary": {
             "environments_processed": len(all_results),
+            "total_items_checked": errors_data.get("summary", {}).get("total_items_checked", 0),
             "items_processed": sum(r["summary"]["items_processed"] for r in all_results),
             "items_with_pods": sum(r["summary"]["items_with_pods"] for r in all_results),
             "total_pods_analyzed": sum(r["summary"]["total_pods_analyzed"] for r in all_results),

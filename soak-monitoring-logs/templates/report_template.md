@@ -6,7 +6,7 @@
 # Available variables (populated from log analysis):
 #   {{date}}                    - Report date
 #   {{time_range}}              - Time window analyzed
-#   {{total_items}}             - Total Velocity items checked
+#   {{total_items}}             - Total Velocity items checked across all environments
 #   {{items_with_errors}}       - Number of items with errors
 #   {{total_velocity_errors}}   - Total Velocity API errors found
 #   {{total_pod_errors}}        - Total pod log errors found
@@ -63,6 +63,7 @@ _Ratings: :green_circle: GREEN = healthy, :yellow_circle: YELLOW = degraded, :re
 |--------|-------|
 | Total Items Monitored | {{total_items}} |
 | Items with Errors | {{items_with_errors}} |
+| Error Rate | {{error_rate}}% |
 | Velocity API Errors | {{total_velocity_errors}} |
 | Pod Log Errors | {{total_pod_errors}} |
 

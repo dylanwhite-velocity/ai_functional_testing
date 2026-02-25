@@ -23,6 +23,7 @@ Guidelines:
 - When no pods are found, use the Velocity API errors marked "(primary — no pods found)" as the diagnostic source.
 - Do NOT include a Healthy Items section.
 - Environment ratings (GREEN/YELLOW/RED) are pre-computed and provided in the data. Use them as-is in the Environments Monitored table — do not override or recalculate them.
+- In the Health Status table, "Total Items Monitored" means ALL Velocity items checked (feeds + RATs + BATs) across all environments, not just items with errors. Use the "Total items checked" value from the data. Calculate Error Rate as (Items with errors / Total items checked) * 100, rounded to one decimal.
 - Group items requiring attention by environment (instance / org ID / username) under subheadings.
 - Prioritize recommendations from most to least urgent.
 - Always preserve original timestamps from log entries in sample errors.

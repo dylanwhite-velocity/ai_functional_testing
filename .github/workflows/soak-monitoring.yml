@@ -90,7 +90,9 @@ jobs:
         working-directory: soak-monitoring-logs
         run: |
           CMD="python src/get_velocity_item_logs.py --config environments.yaml"
-          if [[ "${{ inputs.velocity_hours }}" != "" ]]; then
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            CMD="$CMD --hours 1"
+          elif [[ "${{ inputs.velocity_hours }}" != "" ]]; then
             CMD="$CMD --hours ${{ inputs.velocity_hours }}"
           fi
           if [[ "${{ inputs.item_type }}" != "" && "${{ inputs.item_type }}" != "all" ]]; then
@@ -183,7 +185,9 @@ jobs:
         working-directory: soak-monitoring-logs
         run: |
           CMD="python src/get_pod_logs_for_errors.py ${{ steps.velocity.outputs.file }} --config environments.yaml"
-          if [[ "${{ inputs.pod_hours }}" != "" ]]; then
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            CMD="$CMD --hours 1"
+          elif [[ "${{ inputs.pod_hours }}" != "" ]]; then
             CMD="$CMD --hours ${{ inputs.pod_hours }}"
           fi
           echo "Running: $CMD"

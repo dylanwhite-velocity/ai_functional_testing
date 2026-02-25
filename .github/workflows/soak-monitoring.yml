@@ -284,6 +284,10 @@ jobs:
             exit 0
           fi
 
+          # Inject the workflow run URL into the card
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          sed -i "s|{{workflow_url}}|${RUN_URL}|g" "$CARD"
+
           echo "Posting Teams card: $CARD"
           HTTP_CODE=$(curl -s -o /tmp/teams_response.txt -w "%{http_code}" \
             -X POST \

@@ -55,6 +55,14 @@
             "separator": true,
             "spacing": "medium"
           }
+        ],
+        "actions": [
+          {
+            "type": "Action.OpenUrl",
+            "title": "View Full Report",
+            "url": "{{workflow_url}}",
+            "style": "positive"
+          }
         ]
       }
     }

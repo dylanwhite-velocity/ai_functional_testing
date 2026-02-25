@@ -63,6 +63,8 @@ jobs:
     name: Run Soak Monitoring
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      HAS_TEAMS_WEBHOOK: ${{ secrets.TEAMS_WEBHOOK_URL != '' }}
 
     steps:
       - name: Checkout repository
@@ -273,7 +275,7 @@ jobs:
       # Teams Notification
       # ─────────────────────────────────────────────────────
       - name: Post to Microsoft Teams
-        if: always() && secrets.TEAMS_WEBHOOK_URL != ''
+        if: always() && env.HAS_TEAMS_WEBHOOK == 'true'
         working-directory: soak-monitoring-logs
         env:
           TEAMS_WEBHOOK_URL: ${{ secrets.TEAMS_WEBHOOK_URL }}

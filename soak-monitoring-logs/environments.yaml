@@ -44,3 +44,9 @@ instances:
     organizationId: 8q6rrqvpilhwr3sc
     usernames:
       - neo_soak_solutions_admin
+  
+  - name: qa-dedicated
+    cluster_name: qaus1-dedicated
+    organizationId: 3gllawje4duqf4hh
+    usernames:
+      - soak_neo_dedicated_admin

@@ -289,7 +289,7 @@ jobs:
         env:
           TEAMS_WEBHOOK_URL: ${{ secrets.TEAMS_WEBHOOK_URL }}
         run: |
-          CARD=$(ls -t logs/report_*_teams_card.json 2>/dev/null | head -1)
+          CARD=$(ls -t report_*_teams_card.json 2>/dev/null | head -1)
           if [[ -z "$CARD" ]]; then
             echo "No Teams card JSON found — skipping notification"
             exit 0

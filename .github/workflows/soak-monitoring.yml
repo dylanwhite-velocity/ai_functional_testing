@@ -248,6 +248,7 @@ jobs:
           name: soak-monitoring-report-${{ github.run_number }}
           path: |
             soak-monitoring-logs/logs/report_*.md
+            soak-monitoring-logs/logs/report_*_teams_card.json
             soak-monitoring-logs/logs/velocity_errors_*.json
             soak-monitoring-logs/logs/pod_logs_*.json
           retention-days: 30

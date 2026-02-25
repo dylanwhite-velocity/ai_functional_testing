@@ -5,16 +5,21 @@
 #
 # Available variables (populated from log analysis):
 #   {{date}}                    - Report date
-#   {{sut_name}}                - SUT Config name (e.g., "dog-soak")
-#   {{environment}}             - Environment name
-#   {{cluster}}                 - Kubernetes cluster/context
-#   {{namespace}}               - Kubernetes namespace
 #   {{time_range}}              - Time window analyzed
 #   {{total_items}}             - Total Velocity items checked
 #   {{items_with_errors}}       - Number of items with errors
 #   {{total_velocity_errors}}   - Total Velocity API errors found
 #   {{total_pod_errors}}        - Total pod log errors found
+#   {{model_name}}              - LLM model used for report generation
+#   {{environments}}            - List of environments monitored (see fields below)
 #   {{items}}                   - List of items with errors (see item fields below)
+#
+# Environment fields:
+#   {{env.sut_name}}            - Instance name
+#   {{env.organization_id}}     - Org ID
+#   {{env.username}}            - Username
+#   {{env.rating}}              - Stoplight rating: GREEN, YELLOW, RED (pre-computed)
+#   {{env.rating_reasons}}      - Reasons for the assigned rating
 #
 # Item fields:
 #   {{item.item_id}}            - Velocity item ID
@@ -36,11 +41,13 @@
 
 ### Environments Monitored
 
-| Instance | Org ID | Username |
-|----------|--------|----------|
+| Status | Instance | Org ID | Username |
+|--------|----------|--------|----------|
 {{#each environments}}
-| {{sut_name}} | {{organization_id}} | {{username}} |
+| {{rating_indicator}} {{rating}} | {{sut_name}} | {{organization_id}} | {{username}} |
 {{/each}}
+
+_Ratings: :green_circle: GREEN = healthy, :yellow_circle: YELLOW = degraded, :red_circle: RED = critical_
 
 ---
 

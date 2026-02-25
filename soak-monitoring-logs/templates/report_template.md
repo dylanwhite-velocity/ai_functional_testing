@@ -81,7 +81,7 @@ _Items are grouped by environment (nickname / instance / org ID / username)._
 ### Environment: {{nickname}} / {{sut_name}} / {{organization_id}} / {{username}}
 
 {{#each items}}
-#### {{item_name}} ({{item_type}})
+#### {{severity_indicator}} {{item_name}} ({{item_type}})
 
 | Property | Value |
 |----------|-------|

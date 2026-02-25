@@ -30,6 +30,7 @@ Guidelines:
 - Always preserve original timestamps from log entries in sample errors.
 - Use the report template structure provided, filling in all sections.
 - Use markdown formatting with emoji severity indicators: :red_circle: CRITICAL, :orange_circle: HIGH, :yellow_circle: LOW.
+- Place the severity emoji at the START of each item heading (e.g., `#### :orange_circle: My Feed Name (feed)`). Do NOT put severity as a bullet point under Error Summary.
 - Keep the executive summary to 2-3 sentences.
 - Error entries with [Nx] indicate the error occurred N times in the window.
 

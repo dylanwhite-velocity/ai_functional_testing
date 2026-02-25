@@ -5,28 +5,15 @@
 #   3. Generate summary report (Azure OpenAI)     — needs Secrets Manager
 #   4. Upload report as GitHub Actions artifact
 #
-# AWS setup:
-#   Secrets Manager uses the dwhite-cli IAM user (AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY)
-#   in account 591949011095.
-#   EKS access uses a separate IAM user (AWS_EKS_ACCESS_KEY_ID / AWS_EKS_SECRET_ACCESS_KEY)
-#   in the EKS account (199613768778) with direct cluster access.
-#   Kubeconfig is generated dynamically via `aws eks update-kubeconfig`.
-#
 # Trigger: Daily cron schedule + manual dispatch
 #
-# Required GitHub Secrets:
-#   AWS_ACCESS_KEY_ID          - IAM access key for Secrets Manager (account 591949011095)
-#   AWS_SECRET_ACCESS_KEY      - IAM secret key for Secrets Manager
-#   AWS_EKS_ACCESS_KEY_ID      - IAM access key for EKS (authorized to assume eks-readonly)
-#   AWS_EKS_SECRET_ACCESS_KEY  - IAM secret key for EKS
-#   TEAMS_WEBHOOK_URL          - (Optional) Microsoft Teams Workflows webhook URL for notifications
 
 name: Soak Monitoring
 
 on:
-  # Weekdays at 3 PM UTC / 8 AM MST
+  # Weekdays at 1 PM UTC / 8 AM EST
   schedule:
-    - cron: '0 15 * * 1-5'
+    - cron: '0 13 * * 1-5'
 
   # Manual trigger with optional overrides
   workflow_dispatch:

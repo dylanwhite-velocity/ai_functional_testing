@@ -589,16 +589,22 @@ def run_multi_environment(errors_file: str, config_path: str, hours_back: Option
     for result in all_results:
         for item in result.get("items", []):
             item["environment"] = result.get("environment")
+            item["organization_id"] = result.get("organization_id")
             all_items_results.append(item)
+    
+    # Carry forward environment metadata from velocity errors for reporting
+    env_metadata = errors_data.get("environments", [])
     
     output = {
         "generated_at": datetime.now().isoformat(),
         "config_file": config_path,
         "source_file": errors_file,
         "hours_back": hours_back,
+        "environments": env_metadata,
         "environments_processed": [r.get("environment") for r in all_results],
         "summary": {
             "environments_processed": len(all_results),
+            "total_items_checked": errors_data.get("summary", {}).get("total_items_checked", 0),
             "items_processed": sum(r["summary"]["items_processed"] for r in all_results),
             "items_with_pods": sum(r["summary"]["items_with_pods"] for r in all_results),
             "total_pods_analyzed": sum(r["summary"]["total_pods_analyzed"] for r in all_results),

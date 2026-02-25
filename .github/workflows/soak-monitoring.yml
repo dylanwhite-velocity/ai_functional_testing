@@ -1,31 +1,23 @@
 # Soak Monitoring Workflow
 # Runs the full soak monitoring pipeline on a schedule:
-#   1. Fetch Velocity item logs (API)             — needs Secrets Manager
-#   2. Fetch Kubernetes pod logs (kubectl)         — needs EKS access (eks-readonly role)
-#   3. Generate summary report (Azure OpenAI)     — needs Secrets Manager
-#   4. Upload report as GitHub Actions artifact
+#   1. Soak Monitor  — Fetch logs, generate AI-powered report, upload artifacts
+#   2. Notify Teams  — Post adaptive card (skipped on push triggers)
 #
-# AWS setup:
-#   Secrets Manager uses the dwhite-cli IAM user (AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY)
-#   in account 591949011095.
-#   EKS access uses a separate IAM user (AWS_EKS_ACCESS_KEY_ID / AWS_EKS_SECRET_ACCESS_KEY)
-#   in the EKS account (199613768778) with direct cluster access.
-#   Kubeconfig is generated dynamically via `aws eks update-kubeconfig`.
+# Trigger: Daily cron schedule + manual dispatch + push (code changes)
 #
-# Trigger: Daily cron schedule + manual dispatch
-#
-# Required GitHub Secrets:
-#   AWS_ACCESS_KEY_ID          - IAM access key for Secrets Manager (account 591949011095)
-#   AWS_SECRET_ACCESS_KEY      - IAM secret key for Secrets Manager
-#   AWS_EKS_ACCESS_KEY_ID      - IAM access key for EKS (authorized to assume eks-readonly)
-#   AWS_EKS_SECRET_ACCESS_KEY  - IAM secret key for EKS
 
 name: Soak Monitoring
 
 on:
-  # Weekdays at 3 PM UTC / 8 AM MST
+  # Weekdays at 1 PM UTC / 8 AM EST
   schedule:
-    - cron: '0 15 * * 1-5'
+    - cron: '0 13 * * 1-5'
+
+  # Run on pushes that change soak-monitoring code (any branch)
+  push:
+    paths:
+      - 'soak-monitoring-logs/**'
+      - '.github/workflows/soak-monitoring.yml'
 
   # Manual trigger with optional overrides
   workflow_dispatch:
@@ -57,9 +49,12 @@ env:
   AWS_REGION: us-west-2
   PYTHONPATH: ${{ github.workspace }}
 
+# ═══════════════════════════════════════════════════════════
+# Job 1: Collect Logs & Generate Report
+# ═══════════════════════════════════════════════════════════
 jobs:
   soak-monitor:
-    name: Run Soak Monitoring
+    name: Collect Logs & Generate Report
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -82,24 +77,22 @@ jobs:
           version: 'v1.31.3'
 
       # ─────────────────────────────────────────────────────
-      # AWS Credentials (single identity for all steps)
+      # Step 1: Fetch Velocity item logs (Secrets Manager)
       # ─────────────────────────────────────────────────────
-      - name: Configure AWS Credentials
+      - name: Configure AWS – Secrets Manager
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      # ─────────────────────────────────────────────────────
-      # Step 1: Fetch Velocity item logs (Secrets Manager)
-      # ─────────────────────────────────────────────────────
-
-      - name: 'Step 1: Fetch Velocity item logs'
+      - name: Fetch Velocity item logs
         working-directory: soak-monitoring-logs
         run: |
           CMD="python src/get_velocity_item_logs.py --config environments.yaml"
-          if [[ "${{ inputs.velocity_hours }}" != "" ]]; then
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            CMD="$CMD --hours 1"
+          elif [[ "${{ inputs.velocity_hours }}" != "" ]]; then
             CMD="$CMD --hours ${{ inputs.velocity_hours }}"
           fi
           if [[ "${{ inputs.item_type }}" != "" && "${{ inputs.item_type }}" != "all" ]]; then
@@ -187,12 +180,14 @@ jobs:
             exit 1
           fi
 
-      - name: 'Step 2: Fetch Kubernetes pod logs'
+      - name: Fetch Kubernetes pod logs
         if: steps.velocity.outputs.errors != '0'
         working-directory: soak-monitoring-logs
         run: |
           CMD="python src/get_pod_logs_for_errors.py ${{ steps.velocity.outputs.file }} --config environments.yaml"
-          if [[ "${{ inputs.pod_hours }}" != "" ]]; then
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            CMD="$CMD --hours 1"
+          elif [[ "${{ inputs.pod_hours }}" != "" ]]; then
             CMD="$CMD --hours ${{ inputs.pod_hours }}"
           fi
           echo "Running: $CMD"
@@ -226,7 +221,7 @@ jobs:
           fi
           echo "file=$POD_FILE" >> "$GITHUB_OUTPUT"
 
-      - name: 'Step 3: Generate report'
+      - name: Generate report
         working-directory: soak-monitoring-logs
         run: |
           CMD="python src/generate_report.py"
@@ -248,6 +243,7 @@ jobs:
           name: soak-monitoring-report-${{ github.run_number }}
           path: |
             soak-monitoring-logs/logs/report_*.md
+            soak-monitoring-logs/logs/report_*_teams_card.json
             soak-monitoring-logs/logs/velocity_errors_*.json
             soak-monitoring-logs/logs/pod_logs_*.json
           retention-days: 30
@@ -265,4 +261,56 @@ jobs:
           else
             echo "## No report generated" >> $GITHUB_STEP_SUMMARY
             echo "Check the workflow logs for errors." >> $GITHUB_STEP_SUMMARY
+          fi
+
+  # ═══════════════════════════════════════════════════════════
+  # Job 2: Notify Teams (skipped on push triggers)
+  # ═══════════════════════════════════════════════════════════
+  notify-teams:
+    name: Notify Teams
+    needs: soak-monitor
+    if: always() && github.event_name != 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      HAS_TEAMS_WEBHOOK: ${{ secrets.TEAMS_WEBHOOK_URL != '' }}
+
+    steps:
+      - name: Download report artifact
+        if: env.HAS_TEAMS_WEBHOOK == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: soak-monitoring-report-${{ github.run_number }}
+          path: soak-monitoring-logs
+
+      - name: Post to Microsoft Teams
+        if: env.HAS_TEAMS_WEBHOOK == 'true'
+        working-directory: soak-monitoring-logs
+        env:
+          TEAMS_WEBHOOK_URL: ${{ secrets.TEAMS_WEBHOOK_URL }}
+        run: |
+          CARD=$(ls -t logs/report_*_teams_card.json 2>/dev/null | head -1)
+          if [[ -z "$CARD" ]]; then
+            echo "No Teams card JSON found — skipping notification"
+            exit 0
+          fi
+
+          # Inject the workflow run URL into the card
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          sed -i "s|{{workflow_url}}|${RUN_URL}|g" "$CARD"
+
+          echo "Posting Teams card: $CARD"
+          HTTP_CODE=$(curl -s -o /tmp/teams_response.txt -w "%{http_code}" \
+            -X POST \
+            -H "Content-Type: application/json" \
+            -d @"$CARD" \
+            "$TEAMS_WEBHOOK_URL")
+
+          echo "HTTP response code: $HTTP_CODE"
+          cat /tmp/teams_response.txt
+
+          if [[ "$HTTP_CODE" -lt 200 || "$HTTP_CODE" -ge 300 ]]; then
+            echo "::warning::Teams notification failed (HTTP $HTTP_CODE). Check webhook URL."
+          else
+            echo "Teams notification sent successfully."
           fi

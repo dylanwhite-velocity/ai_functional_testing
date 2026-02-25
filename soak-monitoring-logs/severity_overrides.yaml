@@ -1,0 +1,40 @@
+# Severity Overrides
+#
+# Override the LLM's default severity classification for specific error patterns.
+# The LLM checks these FIRST before applying its own judgment.
+#
+# Severity levels:
+#   CRITICAL - Crash loops, OOM, service down — requires immediate action
+#   HIGH     - Persistent errors affecting functionality
+#   LOW      - Warnings, intermittent/transient issues that self-resolve
+#
+# Fields:
+#   pattern  - Text to match against error messages (case-insensitive substring match)
+#   severity - CRITICAL, HIGH, or LOW
+#   note     - Brief explanation shown to the LLM (and in reports) for context
+#
+# Example:
+#   - pattern: "deadline exceeded"
+#     severity: LOW
+#     note: "gRPC deadline exceeded, typically transient under load"
+
+overrides:
+  - pattern: "504"
+    severity: LOW
+    note: "Gateway timeouts are transient and self-resolve"
+
+  # - pattern: "503"
+  #   severity: LOW
+  #   note: "Service unavailable, typically transient"
+
+  # - pattern: "CrashLoopBackOff"
+  #   severity: CRITICAL
+  #   note: "Pod crash loop requires immediate attention"
+
+  # - pattern: "OOMKilled"
+  #   severity: CRITICAL
+  #   note: "Out of memory, investigate resource limits"
+
+  # - pattern: "OOMKill"
+  #   severity: CRITICAL
+  #   note: "Out of memory kill event"

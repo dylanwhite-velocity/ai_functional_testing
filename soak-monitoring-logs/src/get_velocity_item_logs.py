@@ -354,6 +354,7 @@ async def main(credentials: Dict[str, str], item_type: Optional[str], hours_back
     print(f"{'='*60}\n")
     
     all_errors = []
+    total_items_checked = 0
     
     async with VelocityLogClient(
         credentials['base_url'], 
@@ -369,6 +370,7 @@ async def main(credentials: Dict[str, str], item_type: Optional[str], hours_back
                 if isinstance(feeds, dict):
                     feeds = feeds.get("items", feeds.get("feeds", []))
                 print(f"  Found {len(feeds)} feeds")
+                total_items_checked += len(feeds)
                 errors = await fetch_item_logs(client, feeds, "feed", start_time, end_time, environment_info)
                 all_errors.extend(errors)
             except Exception as e:
@@ -381,6 +383,7 @@ async def main(credentials: Dict[str, str], item_type: Optional[str], hours_back
                 if isinstance(rats, dict):
                     rats = rats.get("items", rats.get("analytics", []))
                 print(f"  Found {len(rats)} RATs")
+                total_items_checked += len(rats)
                 errors = await fetch_item_logs(client, rats, "realtime_analytic", start_time, end_time, environment_info)
                 all_errors.extend(errors)
             except Exception as e:
@@ -393,12 +396,16 @@ async def main(credentials: Dict[str, str], item_type: Optional[str], hours_back
                 if isinstance(bats, dict):
                     bats = bats.get("items", bats.get("analytics", []))
                 print(f"  Found {len(bats)} BATs")
+                total_items_checked += len(bats)
                 errors = await fetch_item_logs(client, bats, "bigdata_analytic", start_time, end_time, environment_info)
                 all_errors.extend(errors)
             except Exception as e:
                 print(f"  Error fetching BATs: {e}")
     
-    return all_errors, credentials
+    print(f"\nTotal items checked: {total_items_checked}")
+    print(f"Items with errors: {len(all_errors)}")
+    
+    return all_errors, credentials, total_items_checked
 
 
 def write_output(all_results: List[Dict], output_suffix: str = "") -> Optional[str]:
@@ -418,9 +425,11 @@ def write_output(all_results: List[Dict], output_suffix: str = "") -> Optional[s
         all_errors.extend(result["items_with_errors"])
         environments.append({
             "sut_name": result["sut_name"],
+            "nickname": result.get("nickname", ""),
             "username": result["username"],
             "organization_id": result["organization_id"],
             "base_url": result["base_url"],
+            "total_items_checked": result.get("total_items_checked", 0),
             "items_with_errors": len(result["items_with_errors"]),
             "total_errors": sum(e["error_count"] for e in result["items_with_errors"])
         })
@@ -431,6 +440,7 @@ def write_output(all_results: List[Dict], output_suffix: str = "") -> Optional[s
         "time_range": all_results[0]["time_range"] if all_results else {},
         "summary": {
             "total_environments": len(environments),
+            "total_items_checked": sum(r.get("total_items_checked", 0) for r in all_results),
             "total_items_with_errors": len(all_errors),
             "total_error_count": sum(e["error_count"] for e in all_errors),
             "by_type": {}
@@ -472,14 +482,16 @@ def load_environments_config(config_path: str) -> tuple[List[Dict], Dict]:
             environments.append({
                 "sut_name": name,
                 "organization_id": org_id,
-                "username": username
+                "username": username,
+                "nickname": instance.get("nickname", "")
             })
     
     return environments, settings
 
 
 async def run_single_environment(sut_name: str, org_id: str, username: str, 
-                                  item_type: Optional[str], hours_back: int) -> Dict:
+                                  item_type: Optional[str], hours_back: int,
+                                  nickname: str = "") -> Dict:
     """Run log fetch for a single environment."""
     credentials = get_credentials_from_sut(sut_name, org_id, username)
     
@@ -492,12 +504,13 @@ async def run_single_environment(sut_name: str, org_id: str, username: str,
         "organization_id": org_id
     }
     
-    errors, creds = await main(credentials, item_type, hours_back, environment_info)
+    errors, creds, total_checked = await main(credentials, item_type, hours_back, environment_info)
     
     return {
         "sut_name": sut_name,
         "username": username,
         "organization_id": org_id,
+        "nickname": nickname,
         "base_url": creds["base_url"],
         "distribution": creds["distribution"],
         "time_range": {
@@ -505,6 +518,7 @@ async def run_single_environment(sut_name: str, org_id: str, username: str,
             "end": datetime.fromtimestamp(end_time/1000).isoformat(),
             "hours_back": hours_back
         },
+        "total_items_checked": total_checked,
         "items_with_errors": errors
     }
 
@@ -542,7 +556,8 @@ async def run_multi_environment(config_path: str, item_type: Optional[str], hour
                 env["organization_id"], 
                 env["username"],
                 item_type, 
-                hours_back
+                hours_back,
+                nickname=env.get("nickname", "")
             )
             all_results.append(result)
         except Exception as e:
@@ -558,6 +573,7 @@ async def run_multi_environment(config_path: str, item_type: Optional[str], hour
     print("COMBINED SUMMARY")
     print(f"{'='*60}")
     print(f"Environments processed: {len(all_results)}")
+    print(f"Total items checked: {output['summary']['total_items_checked']}")
     print(f"Items with errors: {output['summary']['total_items_with_errors']}")
     print(f"Total errors: {output['summary']['total_error_count']}")
     
@@ -581,6 +597,7 @@ async def run_single_with_output(sut_name: str, org_id: str, username: str,
     print(f"\n{'='*60}")
     print("SUMMARY")
     print(f"{'='*60}")
+    print(f"Total items checked: {result.get('total_items_checked', 0)}")
     print(f"Items with errors: {len(result['items_with_errors'])}")
     print(f"Total errors: {sum(e['error_count'] for e in result['items_with_errors'])}")
     

@@ -15,6 +15,7 @@
 #   {{items}}                   - List of items with errors (see item fields below)
 #
 # Environment fields:
+#   {{env.nickname}}            - Friendly name (e.g., Soak Dog, Soak Cat)
 #   {{env.sut_name}}            - Instance name
 #   {{env.organization_id}}     - Org ID
 #   {{env.username}}            - Username
@@ -42,10 +43,10 @@
 
 ### Environments Monitored
 
-| Status | Instance | Org ID | Username |
-|--------|----------|--------|----------|
+| Status | Soak Env | Instance | Org ID | Username |
+|--------|----------|----------|--------|----------|
 {{#each environments}}
-| {{rating_indicator}} {{rating}} | {{sut_name}} | {{organization_id}} | {{username}} |
+| {{rating_indicator}} {{rating}} | {{nickname}} | {{sut_name}} | {{organization_id}} | {{username}} |
 {{/each}}
 
 _Ratings: :green_circle: GREEN = healthy, :yellow_circle: YELLOW = degraded, :red_circle: RED = critical_
@@ -74,10 +75,10 @@ _Ratings: :green_circle: GREEN = healthy, :yellow_circle: YELLOW = degraded, :re
 
 ## Items Requiring Attention
 
-_Items are grouped by environment (instance / org ID / username)._
+_Items are grouped by environment (nickname / instance / org ID / username)._
 
 {{#each environments_with_errors}}
-### Environment: {{sut_name}} / {{organization_id}} / {{username}}
+### Environment: {{nickname}} / {{sut_name}} / {{organization_id}} / {{username}}
 
 {{#each items}}
 #### {{item_name}} ({{item_type}})

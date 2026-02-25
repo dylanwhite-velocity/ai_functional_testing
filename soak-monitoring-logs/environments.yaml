@@ -26,27 +26,32 @@ instances:
     organizationId: rzbirc1krb814pev
     usernames:
       - neo_admin_soak_dog
+    nickname: "Soak Dog"
 
   - name: qa-advanced
     cluster_name: qaus1-advanced
     organizationId: nc7yvw8shwjniihe
     usernames:
       - neo_admin_soak_cat
+    nickname: "Soak Cat"
 
   - name: qa-advanced
     cluster_name: qaus1-advanced
     organizationId: noxnhdppsju1jrte
     usernames:
       - soak_neo_admin_uber_item
+    nickname: "Soak Uber"
 
   - name: qa-dedicated
     cluster_name: qaus1-dedicated
     organizationId: 8q6rrqvpilhwr3sc
     usernames:
       - neo_soak_solutions_admin
+    nickname: "Soak Solutions"
   
   - name: qa-dedicated
     cluster_name: qaus1-dedicated
     organizationId: 3gllawje4duqf4hh
     usernames:
       - soak_neo_dedicated_admin
+    nickname: "Soak Horse"

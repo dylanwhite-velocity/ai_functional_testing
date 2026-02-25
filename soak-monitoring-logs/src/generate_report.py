@@ -268,6 +268,7 @@ def summarize_pod_logs(data: Dict[str, Any]) -> str:
         lines.append("=== Environments Monitored ===")
         for env in rated_envs:
             rating = env.get('rating', 'N/A')
+            lines.append(f"  Nickname: {env.get('nickname', 'N/A')}")
             lines.append(f"  Instance: {env.get('sut_name', 'N/A')}")
             lines.append(f"    Org ID: {env.get('organization_id', 'N/A')}")
             lines.append(f"    Username: {env.get('username', 'N/A')}")
@@ -643,7 +644,7 @@ def build_teams_card(
                     {"type": "TextBlock", "text": r["emoji"], "size": "medium"}
                 ]},
                 {"type": "Column", "width": "stretch", "items": [
-                    {"type": "TextBlock", "text": f"**{env.get('sut_name', 'N/A')}** / {env.get('username', 'N/A')}", "wrap": True},
+                    {"type": "TextBlock", "text": f"**{env.get('nickname', env.get('sut_name', 'N/A'))}**", "wrap": True},
                     {"type": "TextBlock", "text": f"Org: {env.get('organization_id', 'N/A')} | Errors: {env.get('items_with_errors', 0)} items / {env.get('total_errors', 0)} total", "size": "small", "isSubtle": True, "wrap": True}
                 ]}
             ]

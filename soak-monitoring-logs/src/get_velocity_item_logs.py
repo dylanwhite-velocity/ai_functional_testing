@@ -425,6 +425,7 @@ def write_output(all_results: List[Dict], output_suffix: str = "") -> Optional[s
         all_errors.extend(result["items_with_errors"])
         environments.append({
             "sut_name": result["sut_name"],
+            "nickname": result.get("nickname", ""),
             "username": result["username"],
             "organization_id": result["organization_id"],
             "base_url": result["base_url"],
@@ -481,14 +482,16 @@ def load_environments_config(config_path: str) -> tuple[List[Dict], Dict]:
             environments.append({
                 "sut_name": name,
                 "organization_id": org_id,
-                "username": username
+                "username": username,
+                "nickname": instance.get("nickname", "")
             })
     
     return environments, settings
 
 
 async def run_single_environment(sut_name: str, org_id: str, username: str, 
-                                  item_type: Optional[str], hours_back: int) -> Dict:
+                                  item_type: Optional[str], hours_back: int,
+                                  nickname: str = "") -> Dict:
     """Run log fetch for a single environment."""
     credentials = get_credentials_from_sut(sut_name, org_id, username)
     
@@ -507,6 +510,7 @@ async def run_single_environment(sut_name: str, org_id: str, username: str,
         "sut_name": sut_name,
         "username": username,
         "organization_id": org_id,
+        "nickname": nickname,
         "base_url": creds["base_url"],
         "distribution": creds["distribution"],
         "time_range": {
@@ -552,7 +556,8 @@ async def run_multi_environment(config_path: str, item_type: Optional[str], hour
                 env["organization_id"], 
                 env["username"],
                 item_type, 
-                hours_back
+                hours_back,
+                nickname=env.get("nickname", "")
             )
             all_results.append(result)
         except Exception as e:

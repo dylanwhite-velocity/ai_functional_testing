@@ -19,6 +19,7 @@
 #   AWS_SECRET_ACCESS_KEY      - IAM secret key for Secrets Manager
 #   AWS_EKS_ACCESS_KEY_ID      - IAM access key for EKS (authorized to assume eks-readonly)
 #   AWS_EKS_SECRET_ACCESS_KEY  - IAM secret key for EKS
+#   TEAMS_WEBHOOK_URL          - (Optional) Microsoft Teams Workflows webhook URL for notifications
 
 name: Soak Monitoring
 
@@ -266,4 +267,35 @@ jobs:
           else
             echo "## No report generated" >> $GITHUB_STEP_SUMMARY
             echo "Check the workflow logs for errors." >> $GITHUB_STEP_SUMMARY
+          fi
+
+      # ─────────────────────────────────────────────────────
+      # Teams Notification
+      # ─────────────────────────────────────────────────────
+      - name: Post to Microsoft Teams
+        if: always() && secrets.TEAMS_WEBHOOK_URL != ''
+        working-directory: soak-monitoring-logs
+        env:
+          TEAMS_WEBHOOK_URL: ${{ secrets.TEAMS_WEBHOOK_URL }}
+        run: |
+          CARD=$(ls -t logs/report_*_teams_card.json 2>/dev/null | head -1)
+          if [[ -z "$CARD" ]]; then
+            echo "No Teams card JSON found — skipping notification"
+            exit 0
+          fi
+
+          echo "Posting Teams card: $CARD"
+          HTTP_CODE=$(curl -s -o /tmp/teams_response.txt -w "%{http_code}" \
+            -X POST \
+            -H "Content-Type: application/json" \
+            -d @"$CARD" \
+            "$TEAMS_WEBHOOK_URL")
+
+          echo "HTTP response code: $HTTP_CODE"
+          cat /tmp/teams_response.txt
+
+          if [[ "$HTTP_CODE" -lt 200 || "$HTTP_CODE" -ge 300 ]]; then
+            echo "::warning::Teams notification failed (HTTP $HTTP_CODE). Check webhook URL."
+          else
+            echo "Teams notification sent successfully."
           fi

@@ -190,6 +190,31 @@ def load_system_prompt(prompt_path: Optional[str] = None) -> str:
 
 
 # Fallback in case the file is missing or empty
+
+
+def load_severity_overrides(overrides_path: Optional[str] = None) -> List[Dict[str, str]]:
+    """Load severity overrides from severity_overrides.yaml.
+
+    Returns a list of dicts with 'pattern', 'severity', and 'note' keys.
+    Returns an empty list if the file is not found or has no overrides.
+    """
+    if overrides_path is None:
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        overrides_path = os.path.join(os.path.dirname(script_dir), "severity_overrides.yaml")
+
+    try:
+        import yaml
+        with open(overrides_path, "r") as f:
+            data = yaml.safe_load(f)
+        overrides = data.get("overrides", []) if data else []
+        if overrides:
+            print(f"  Loaded {len(overrides)} severity override(s) from {os.path.basename(overrides_path)}")
+        return overrides
+    except FileNotFoundError:
+        return []
+    except Exception as e:
+        print(f"  Warning: Failed to load severity overrides: {e}")
+        return []
 _DEFAULT_SYSTEM_PROMPT = """You are an expert Site Reliability Engineer analyzing ArcGIS Velocity soak environment health.
 Your task is to generate a comprehensive monitoring report from structured log data.
 Be precise and factual. Only reference errors/data present in the provided data.
@@ -342,6 +367,20 @@ def build_prompt(
         Tuple of (system_prompt, user_prompt)
     """
     system_prompt = load_system_prompt()
+
+    # Append severity overrides to system prompt if any exist
+    overrides = load_severity_overrides()
+    if overrides:
+        override_lines = ["\n\n=== Severity Overrides ===",
+                          "Match errors against these patterns FIRST (case-insensitive). "
+                          "These override your default severity judgment:"]
+        for o in overrides:
+            pattern = o.get("pattern", "")
+            severity = o.get("severity", "UNKNOWN")
+            note = o.get("note", "")
+            override_lines.append(f"  {pattern} → {severity} ({note})")
+        override_lines.append("For errors not matching any override, use your default judgment.")
+        system_prompt += "\n".join(override_lines)
 
     # Build compact text summary
     data_summary = summarize_pod_logs(pod_logs)

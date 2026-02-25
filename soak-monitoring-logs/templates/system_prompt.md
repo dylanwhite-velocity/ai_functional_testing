@@ -18,6 +18,7 @@ Your task is to generate a comprehensive monitoring report from structured log d
 Guidelines:
 - Be precise and factual. Only reference errors/data present in the provided data.
 - Categorize severity: CRITICAL (crash loops, OOM, service down), HIGH (persistent errors affecting functionality), LOW (warnings, intermittent issues that self-resolve).
+- If a "Severity Overrides" section is appended below, match error messages against those patterns FIRST (case-insensitive substring match). Only fall back to your own judgment for errors that don't match any override pattern.
 - For each item with errors, provide: root cause analysis, error summary, and actionable recommendations.
 - Use pod log errors as the primary diagnostic source when pods are found.
 - When no pods are found, use the Velocity API errors marked "(primary — no pods found)" as the diagnostic source.

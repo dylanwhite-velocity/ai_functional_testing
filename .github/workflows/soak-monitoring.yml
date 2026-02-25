@@ -1,11 +1,9 @@
 # Soak Monitoring Workflow
 # Runs the full soak monitoring pipeline on a schedule:
-#   1. Fetch Velocity item logs (API)             — needs Secrets Manager
-#   2. Fetch Kubernetes pod logs (kubectl)         — needs EKS access (eks-readonly role)
-#   3. Generate summary report (Azure OpenAI)     — needs Secrets Manager
-#   4. Upload report as GitHub Actions artifact
+#   1. Soak Monitor  — Fetch logs, generate AI-powered report, upload artifacts
+#   2. Notify Teams  — Post adaptive card (skipped on push triggers)
 #
-# Trigger: Daily cron schedule + manual dispatch
+# Trigger: Daily cron schedule + manual dispatch + push (code changes)
 #
 
 name: Soak Monitoring
@@ -14,6 +12,12 @@ on:
   # Weekdays at 1 PM UTC / 8 AM EST
   schedule:
     - cron: '0 13 * * 1-5'
+
+  # Run on pushes that change soak-monitoring code (any branch)
+  push:
+    paths:
+      - 'soak-monitoring-logs/**'
+      - '.github/workflows/soak-monitoring.yml'
 
   # Manual trigger with optional overrides
   workflow_dispatch:
@@ -45,13 +49,14 @@ env:
   AWS_REGION: us-west-2
   PYTHONPATH: ${{ github.workspace }}
 
+# ═══════════════════════════════════════════════════════════
+# Job 1: Collect Logs & Generate Report
+# ═══════════════════════════════════════════════════════════
 jobs:
   soak-monitor:
-    name: Run Soak Monitoring
+    name: Collect Logs & Generate Report
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    env:
-      HAS_TEAMS_WEBHOOK: ${{ secrets.TEAMS_WEBHOOK_URL != '' }}
 
     steps:
       - name: Checkout repository
@@ -72,20 +77,16 @@ jobs:
           version: 'v1.31.3'
 
       # ─────────────────────────────────────────────────────
-      # AWS Credentials (single identity for all steps)
+      # Step 1: Fetch Velocity item logs (Secrets Manager)
       # ─────────────────────────────────────────────────────
-      - name: Configure AWS Credentials
+      - name: Configure AWS – Secrets Manager
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      # ─────────────────────────────────────────────────────
-      # Step 1: Fetch Velocity item logs (Secrets Manager)
-      # ─────────────────────────────────────────────────────
-
-      - name: 'Step 1: Fetch Velocity item logs'
+      - name: Fetch Velocity item logs
         working-directory: soak-monitoring-logs
         run: |
           CMD="python src/get_velocity_item_logs.py --config environments.yaml"
@@ -177,7 +178,7 @@ jobs:
             exit 1
           fi
 
-      - name: 'Step 2: Fetch Kubernetes pod logs'
+      - name: Fetch Kubernetes pod logs
         if: steps.velocity.outputs.errors != '0'
         working-directory: soak-monitoring-logs
         run: |
@@ -216,7 +217,7 @@ jobs:
           fi
           echo "file=$POD_FILE" >> "$GITHUB_OUTPUT"
 
-      - name: 'Step 3: Generate report'
+      - name: Generate report
         working-directory: soak-monitoring-logs
         run: |
           CMD="python src/generate_report.py"
@@ -258,11 +259,28 @@ jobs:
             echo "Check the workflow logs for errors." >> $GITHUB_STEP_SUMMARY
           fi
 
-      # ─────────────────────────────────────────────────────
-      # Teams Notification
-      # ─────────────────────────────────────────────────────
+  # ═══════════════════════════════════════════════════════════
+  # Job 2: Notify Teams (skipped on push triggers)
+  # ═══════════════════════════════════════════════════════════
+  notify-teams:
+    name: Notify Teams
+    needs: soak-monitor
+    if: always() && github.event_name != 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      HAS_TEAMS_WEBHOOK: ${{ secrets.TEAMS_WEBHOOK_URL != '' }}
+
+    steps:
+      - name: Download report artifact
+        if: env.HAS_TEAMS_WEBHOOK == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: soak-monitoring-report-${{ github.run_number }}
+          path: soak-monitoring-logs
+
       - name: Post to Microsoft Teams
-        if: always() && env.HAS_TEAMS_WEBHOOK == 'true'
+        if: env.HAS_TEAMS_WEBHOOK == 'true'
         working-directory: soak-monitoring-logs
         env:
           TEAMS_WEBHOOK_URL: ${{ secrets.TEAMS_WEBHOOK_URL }}
